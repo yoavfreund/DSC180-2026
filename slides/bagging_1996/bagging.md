@@ -12,6 +12,8 @@ style: |
   .rep { background: #fff3c4; }
   .good { color: #2e8b57; font-weight: bold; }
   .small { font-size: 20px; color: #555; }
+  .kicker { font-size: 18px; letter-spacing: 2px; text-transform: uppercase; color: #1f5fa8; margin-bottom: 2px; }
+  h2 { margin-top: 0; }
   .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
   .small-tables { font-size: 22px; } .small-tables table { font-size: 20px; } .small-tables th, .small-tables td { padding: 4px 10px; }
   .big { font-size: 40px; text-align: center; margin: 30px 0; }
@@ -29,7 +31,10 @@ Sohan Shingade · DSC 180A · Week 3
 Bagging is a way to make a shaky learner reliable by training it many times and letting the copies vote. I'll build it up from one dataset and one decision tree.
 -->
 
+
 ---
+
+<div class="kicker">§1 Introduction</div>
 
 ## 1. The task: predict diabetes from 8 numbers
 
@@ -49,6 +54,8 @@ I want to predict whether a patient gets diabetes from 8 measurements. 768 patie
 -->
 
 ---
+
+<div class="kicker">§1 Introduction</div>
 
 ## 2. One decision tree is a shaky guess
 
@@ -89,6 +96,8 @@ A decision tree asks yes/no questions it picks from the data. The problem: chang
 
 ---
 
+<div class="kicker">§1 Introduction</div>
+
 ## 3. Noisy guesses average out, but I only have one dataset
 
 If I had 50 **independent** datasets, I could train 50 trees and let them vote. Their individual mistakes would cancel.
@@ -104,6 +113,8 @@ If I had 50 independent datasets I could train 50 trees and average them. But I 
 -->
 
 ---
+
+<div class="kicker">§1 Introduction · bootstrap</div>
 
 ## 4. Bootstrap: resample your own data, with replacement
 
@@ -124,6 +135,8 @@ Bootstrap: draw 768 patients from my 768 at random, putting each one back after 
 -->
 
 ---
+
+<div class="kicker">§1 Introduction · bootstrap</div>
 
 ## 5. Why a resample is a fair fake of a new dataset
 
@@ -160,6 +173,8 @@ Why is resampling my own data a fair fake? My 768 patients are a random sample f
 
 ---
 
+<div class="kicker">§1 Introduction · bootstrap</div>
+
 ## 6. Each copy sees about 63% of the patients
 
 Chance a given patient is **never** drawn in 768 draws: (1 − 1/768)⁷⁶⁸ ≈ 1/e ≈ **37%**.
@@ -175,6 +190,8 @@ Each copy misses about 37% of the patients, so it has about 63% of them plus rep
 -->
 
 ---
+
+<div class="kicker">§1 Introduction</div>
 
 ## 7. Bagging = bootstrap + aggregate
 
@@ -197,6 +214,8 @@ Bagging is just that: 50 bootstrap copies, 50 trees, majority vote. For predicti
 
 ---
 
+<div class="kicker">§1 Introduction</div>
+
 ## 8. Three trees vote on a new patient
 
 New patient: glucose 130, BMI 35, age 45.
@@ -217,7 +236,53 @@ Three trees from three copies. Each latched onto a different pattern because eac
 
 ---
 
-## 9. Why it works: averaging cancels noise
+<div class="kicker">§2 Classification trees</div>
+
+## 9. Breiman's results: better on every dataset
+
+| Dataset | One tree | 50 bagged | Decrease |
+|---|---|---|---|
+| waveform | 29.0 | 19.4 | 33% |
+| heart (UCSD Medical Center) | 10.0 | 5.3 | 47% |
+| breast cancer | 6.0 | 4.2 | 30% |
+| ionosphere | 11.2 | 8.6 | 23% |
+| **diabetes** | **23.4** | **18.8** | **20%** |
+| glass | 32.0 | 24.9 | 22% |
+| soybean | 14.5 | 10.6 | 27% |
+
+Test error %, one CART tree vs. 50 bagged trees, averaged over 100 random train/test splits.
+
+<!--
+Seven datasets, error down 20 to 47 percent on every one. The heart data is from UCSD Medical Center. Same protocol each time: random split, one tree versus 50 bagged trees, repeated 100 times.
+-->
+
+---
+
+<div class="kicker">§3 Regression trees</div>
+
+## 10. Bagging regression trees: average instead of vote
+
+Same recipe, numeric target: 25 bootstrap copies, average the 25 predictions, mean squared error on the test set, 100 random splits.
+
+| Dataset | Single tree | Bagged | Decrease |
+|---|---|---|---|
+| Boston housing | 19.1 | 11.7 | 39% |
+| Ozone | 23.1 | 18.0 | 22% |
+| Friedman #1 (simulated) | 11.4 | 6.2 | 46% |
+| Friedman #2 (simulated) | 30,800 | 21,700 | 30% |
+| Friedman #3 (simulated) | .0403 | .0249 | 38% |
+
+Units differ per dataset, so only the decrease column is comparable. Bagging won on all five.
+
+<!--
+Section 3 does the same thing for regression trees: average the predictions instead of voting. Five datasets, 22 to 46 percent less squared error. Same story.
+-->
+
+---
+
+<div class="kicker">§4 Why bagging works</div>
+
+## 11. Why it works: averaging cancels noise
 
 <div class="cols">
 <div>
@@ -254,7 +319,9 @@ Why does it work? Averaging cancels noise. If the learner wobbles a lot between 
 
 ---
 
-## 10. The theorem: aggregating never raises squared error
+<div class="kicker">§4 Why bagging works</div>
+
+## 12. The theorem: aggregating never raises squared error
 
 φ(x, L) = model trained on learning set L. φ_A(x) = E_L φ(x, L) = the aggregated model.
 
@@ -273,74 +340,7 @@ Here is the actual theorem. The aggregated model's squared error is never above 
 
 ---
 
-## 11. Breiman's results: better on every dataset
-
-| Dataset | One tree | 50 bagged | Decrease |
-|---|---|---|---|
-| waveform | 29.0 | 19.4 | 33% |
-| heart (UCSD Medical Center) | 10.0 | 5.3 | 47% |
-| breast cancer | 6.0 | 4.2 | 30% |
-| ionosphere | 11.2 | 8.6 | 23% |
-| **diabetes** | **23.4** | **18.8** | **20%** |
-| glass | 32.0 | 24.9 | 22% |
-| soybean | 14.5 | 10.6 | 27% |
-
-Test error %, one CART tree vs. 50 bagged trees, averaged over 100 random train/test splits.
-
-<!--
-Seven datasets, error down 20 to 47 percent on every one. The heart data is from UCSD Medical Center. Same protocol each time: random split, one tree versus 50 bagged trees, repeated 100 times.
--->
-
----
-
-## 12. The rest of the paper's evidence
-
-<div class="cols small-tables">
-<div>
-
-**Regression trees** (Table 3, MSE)
-
-| Dataset | Decrease |
-|---|---|
-| Boston housing | 39% |
-| Ozone | 22% |
-| Friedman #1 / #2 / #3 | 46% / 30% / 38% |
-
-Average instead of vote. Same story.
-
-**Nearest neighbour, a stable learner** (Table 5)
-
-| Dataset | Single | Bagged |
-|---|---|---|
-| waveform | 26.1 | 26.1 |
-| heart | 6.3 | 6.3 |
-| diabetes | 16.4 | 16.4 |
-
-Identical to the decimal, on every dataset.
-
-</div>
-<div>
-
-**How many copies?** (Table 5.1, waveform)
-
-| Copies | Error % |
-|---|---|
-| 0 (one tree) | 29.0 |
-| 10 | 21.8 |
-| 25 | 19.5 |
-| 50 | 19.4 |
-| 100 | 19.4 |
-
-> "More than 25 bootstrap replicates is love's labor lost."
-
-</div>
-</div>
-
-<!--
-Three more tables from the paper. Regression trees, averaging instead of voting: 22 to 46 percent less error. Nearest neighbour, the stable learner: identical to the decimal on every dataset. And how many copies you need: 10 gets most of the gain, 25 nearly all of it.
--->
-
----
+<div class="kicker">§5 When bagging hurts</div>
 
 ## 13. When bagging hurts
 
@@ -363,7 +363,52 @@ Breiman also shows where it fails. Variable selection in regression: with few va
 
 ---
 
-## 14. My run: same story on the diabetes data
+<div class="kicker">§6 Concluding remarks</div>
+
+## 14. Concluding remarks: three leftover questions
+
+<div class="cols small-tables">
+<div>
+
+**How many copies?** (Table 5.1, waveform)
+
+| Copies | Error % |
+|---|---|
+| 0 (one tree) | 29.0 |
+| 10 | 21.8 |
+| 25 | 19.5 |
+| 50 | 19.4 |
+| 100 | 19.4 |
+
+> "More than 25 bootstrap replicates is love's labor lost."
+
+</div>
+<div>
+
+**Does it help a stable learner?** (Table 5, nearest neighbour)
+
+| Dataset | Single | Bagged |
+|---|---|---|
+| waveform | 26.1 | 26.1 |
+| heart | 6.3 | 6.3 |
+| diabetes | 16.4 | 16.4 |
+
+Identical to the decimal, on every dataset.
+
+**Vote, or average the class probabilities?** Same accuracy. But the averaged probabilities themselves are 34% more accurate.
+
+</div>
+</div>
+
+<!--
+Section 6 answers three leftover questions. How many copies: 10 gets most of the gain, 25 nearly all. Does it help a stable learner: nearest neighbour didn't move to the decimal. And voting versus averaging probabilities: same accuracy, but the averaged probabilities are better estimates.
+-->
+
+---
+
+<div class="kicker">My implementation</div>
+
+## 15. My run: same story on the diabetes data
 
 50 random 80/20 splits, sklearn trees. Error is mean ± 95% CI.
 
@@ -384,7 +429,9 @@ I ran it on the diabetes data. One tree: 30% error. 50 bagged trees: 24%. That's
 
 ---
 
-## 15. Takeaways
+<div class="kicker">Takeaways</div>
+
+## 16. Takeaways
 
 1. **Bootstrap** fakes new datasets by resampling the one you have. It is a fair fake because your sample stands in for the population.
 2. **Bagging** = bootstrap copies + vote. The learner is untouched.
