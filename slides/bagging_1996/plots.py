@@ -1,0 +1,18 @@
+import pandas as pd, numpy as np, matplotlib
+matplotlib.use("Agg"); import matplotlib.pyplot as plt
+plt.rcParams.update({"font.size": 14, "axes.spines.top": False, "axes.spines.right": False})
+c = pd.read_csv("curve.csv"); c[["m","pm"]] = c["error"].str.split(" ± ", expand=True).astype(float)
+fig, ax = plt.subplots(figsize=(8, 4.2))
+ax.errorbar(c.bags, c.m, yerr=c.pm, marker="o", lw=2, capsize=4, color="#1f5fa8")
+ax.axhline(c.m[0], ls="--", color="#999"); ax.text(100, c.m[0]+0.3, "single tree", ha="right", color="#666")
+ax.set_xscale("log"); ax.set_xticks(c.bags); ax.set_xticklabels(c.bags)
+ax.set_xlabel("number of bootstrap copies (trees)"); ax.set_ylabel("test error %")
+ax.set_title("Most of the gain comes from the first 10 copies", loc="left")
+fig.tight_layout(); fig.savefig("curve.png", dpi=200)
+k = pd.read_csv("confidence.csv"); k["acc"] = k["accuracy"].str.rstrip("%").astype(float)
+fig, ax = plt.subplots(figsize=(8, 4.2))
+bars = ax.bar(k.bucket, k.acc, color=["#c9302c","#e8a33d","#5b9bd5","#2e8b57"])
+for b, s in zip(bars, k["share"]): ax.text(b.get_x()+b.get_width()/2, b.get_height()+1.5, f"{b.get_height():.0f}%  ({s} of patients)", ha="center", fontsize=11)
+ax.set_ylim(0, 105); ax.set_ylabel("accuracy %"); ax.set_xlabel("how split the 50-tree vote was")
+ax.set_title("The vote split says when the model is unsure", loc="left"); ax.tick_params(axis="x", labelsize=11)
+fig.tight_layout(); fig.savefig("confidence.png", dpi=200); print("plots ok")
