@@ -4,419 +4,308 @@ size: 16:9
 paginate: true
 theme: default
 style: |
-  section { font-family: Helvetica, Arial, sans-serif; font-size: 26px; padding: 50px 64px; }
-  h1 { font-size: 44px; margin-bottom: 6px; }
-  h2 { font-size: 36px; margin: 0 0 18px 0; }
-  .kicker { font-size: 18px; letter-spacing: 2px; text-transform: uppercase; color: #1f5fa8; margin-bottom: 4px; }
-  table { font-size: 22px; }
+  section { font-family: Helvetica, Arial, sans-serif; font-size: 28px; padding: 56px 70px; }
+  h1 { font-size: 46px; }
+  h2 { font-size: 38px; margin: 0 0 24px 0; line-height: 1.2; }
+  table { font-size: 24px; }
   th { background: #eef3f9; }
-  .hl { background: #fff3c4; }
+  .rep { background: #fff3c4; }
   .good { color: #2e8b57; font-weight: bold; }
-  .bad { color: #c9302c; font-weight: bold; }
-  .small { font-size: 19px; color: #555; }
-  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; }
-  blockquote { border-left: 5px solid #1f5fa8; padding-left: 18px; font-style: italic; color: #333; }
-  pre { font-size: 21px; }
+  .small { font-size: 20px; color: #555; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+  .big { font-size: 40px; text-align: center; margin: 30px 0; }
+  pre { font-size: 23px; }
+  blockquote { border-left: 5px solid #1f5fa8; padding-left: 18px; font-style: italic; }
 ---
-
-<div class="kicker">DSC 180A · Paper presentation</div>
 
 # Bagging Predictors
 
-### Leo Breiman · *Machine Learning*, 1996
+### Leo Breiman, *Machine Learning* 1996
 
-Presented by Sohan Shingade
+Sohan Shingade · DSC 180A · Week 3
+
+<!--
+Bagging is a way to make a shaky learner reliable by training it many times and letting the copies vote. I'll build it up from one dataset and one decision tree.
+-->
+
+---
+
+## 1. The task: predict diabetes from 8 numbers
+
+| Patient | Glucose | BMI | Age | … | Diabetic? |
+|---|---|---|---|---|---|
+| A | 148 | 33.6 | 50 | | yes |
+| B | 85 | 26.6 | 31 | | no |
+| C | 183 | 23.3 | 32 | | yes |
+| D | 89 | 28.1 | 21 | | no |
+| E | 137 | 43.1 | 33 | | yes |
+| F | 116 | 25.6 | 30 | | no |
+
+768 patients like this (Pima Indians Diabetes, Kaggle). Breiman used this same dataset.
+
+<!--
+I want to predict whether a patient gets diabetes from 8 measurements. 768 patients. Breiman used this exact dataset in the paper, so I can compare my numbers to his later.
+-->
+
+---
+
+## 2. One decision tree is a shaky guess
+
+<div class="cols">
+<div>
+
+**Tree trained on A–F**
+
+```
+glucose > 127 ?
+  yes → diabetic
+  no  → not diabetic
+```
+
+</div>
+<div>
+
+**Swap out two patients, retrain**
+
+```
+BMI > 30 ?
+  yes → age > 40 ? …
+  no  → not diabetic
+```
+
+</div>
+</div>
 
 <br>
 
-<span class="small">bootstrap + aggregating = bagging</span>
+Change a little data and the whole tree changes. Breiman calls this **unstable**.
+
+The single tree in the paper got 23% of diabetes patients wrong.
+
+<!--
+A decision tree asks yes/no questions it picks from the data. The problem: change a few patients and it picks completely different questions. Breiman's word is "unstable". So any one tree is a noisy guess.
+-->
 
 ---
 
-<div class="kicker">Running example</div>
+## 3. Noisy guesses average out, but I only have one dataset
 
-## Will this patient develop diabetes?
+If I had 50 **independent** datasets, I could train 50 trees and let them vote. Their individual mistakes would cancel.
 
-| # | Patient | Glucose | BMI | Age | Diabetic? |
-|---|---|---|---|---|---|
-| 1 | A | 148 | 33.6 | 50 | yes |
-| 2 | B | 85 | 26.6 | 31 | no |
-| 3 | C | 183 | 23.3 | 32 | yes |
-| 4 | D | 89 | 28.1 | 21 | no |
-| 5 | E | 137 | 43.1 | 33 | yes |
-| 6 | F | 116 | 25.6 | 30 | no |
+<div class="big">one dataset → one tree → one noisy guess</div>
 
-A **learner** turns this table into a **model**. Today's learner is a decision tree: a flowchart of yes/no questions picked from the data.
+I can't go collect 50 more sets of 768 patients.
 
-<span class="small">Real rows from the Pima Indians Diabetes dataset (Kaggle / UCI), used again in my experiment.</span>
+**So: can I fake 50 datasets from the one I have?**
+
+<!--
+If I had 50 independent datasets I could train 50 trees and average them. But I have one dataset. So the question is whether I can fake the other 49.
+-->
 
 ---
 
-<div class="kicker">The problem</div>
+## 4. Bootstrap: resample your own data, with replacement
 
-## One tree is unstable
+Draw 6 patients from {A, B, C, D, E, F} at random. Put each one back before the next draw.
+
+| Copy | Draws | Repeated | Left out |
+|---|---|---|---|
+| 1 | <span class="rep">A A</span> C D <span class="rep">E E</span> | A, E | B, F |
+| 2 | <span class="rep">B B</span> <span class="rep">C C</span> D F | B, C | A, E |
+| 3 | A B D E <span class="rep">F F</span> | F | C |
+
+Each copy is the same size as the original, but some rows repeat and some are missing.
+
+<span class="small">"Bootstrap": Efron, 1979. Breiman's idea was to feed these copies to a learner.</span>
+
+<!--
+Bootstrap: draw 768 patients from my 768 at random, putting each one back after drawing. So some patients appear twice, some not at all. Each copy is the same size as the original but a different mix. Do it 50 times, 50 copies.
+-->
+
+---
+
+## 5. Why a resample is a fair fake of a new dataset
 
 <div class="cols">
 <div>
 
-**Tree from patients 1–6**
+**What actually happened**
 
-```
-glucose > 127?
-├─ yes → diabetic
-└─ no  → not diabetic
-```
+The world has millions of people.
+My 768 patients are a **random sample** of them.
+Another study would get a *different* 768.
 
 </div>
 <div>
 
-**Swap patient F for a new one, retrain**
+**What bootstrap imitates**
 
-```
-BMI > 30?
-├─ yes → age > 40? → ...
-└─ no  → not diabetic
-```
+Treat my 768 as if they *were* the world.
+A bootstrap copy is a **random sample** of them.
+Another copy is a *different* 768.
 
 </div>
 </div>
 
-A small change in the learning set gives a completely different model. Breiman calls this **instability**. Trees, neural nets and variable selection are unstable; nearest neighbour is stable.
+<br>
 
-**Breiman's question:** if one tree is a noisy guess, can we average out the noise?
+The amount a tree **wobbles** between bootstrap copies is close to how much it would wobble between real studies. That is the whole bet.
+
+It works because the 768 are a decent stand-in for the population. With 6 patients it would not.
+
+<!--
+Why is resampling my own data a fair fake? My 768 patients are a random sample from the world. A bootstrap copy is a random sample from my 768. The same relationship one level down. So the way a tree wobbles between bootstrap copies mimics how it would wobble between real studies. It only works because 768 is big enough to stand in for the population.
+-->
 
 ---
 
-<div class="kicker">The dream</div>
+## 6. Each copy sees about 63% of the patients
 
-## If only we had many learning sets
+Chance a given patient is **never** drawn in 768 draws: (1 − 1/768)⁷⁶⁸ ≈ 1/e ≈ **37%**.
 
-With independent learning sets L₁, L₂, … Lₖ we could train a model on each and combine:
+So each bootstrap copy contains about **63%** of the distinct patients, with the rest filled by repeats.
 
-| Predicting | Combine by |
-|---|---|
-| a label (classification) | **majority vote** |
-| a number (regression) | **average** |
+<div class="big">different 63% → different tree</div>
 
-Breiman writes this as φ_A, the *aggregated* predictor. He shows it is always at least as good as a single φ.
+That is exactly what we want: 50 copies give 50 genuinely different trees.
 
-**Problem:** we only ever have **one** learning set L.
-
----
-
-<div class="kicker">The trick</div>
-
-## Bootstrap: fake the extra learning sets
-
-Draw N patients from L **at random, with replacement**. Some appear twice, some not at all.
-
-| Copy | Patients drawn | Missing |
-|---|---|---|
-| L⁽¹⁾ | 1, 1, 3, 4, 5, 5 | 2, 6 |
-| L⁽²⁾ | 2, 2, 3, 3, 4, 6 | 1, 5 |
-| L⁽³⁾ | 1, 2, 4, 5, 6, 6 | 3 |
-
-Each copy holds about **63%** of the distinct patients (1 − 1/e). Different copies, different trees.
-
-<span class="small">Bootstrap: Efron & Tibshirani (1993). Breiman's contribution is using it to grow a committee of models.</span>
+<!--
+Each copy misses about 37% of the patients, so it has about 63% of them plus repeats. That's why the 50 trees come out different. If the learner were stable this wouldn't matter; for a tree it matters a lot.
+-->
 
 ---
 
-<div class="kicker">The algorithm</div>
+## 7. Bagging = bootstrap + aggregate
 
-## Bagging = bootstrap aggregating
-
-<div class="cols">
-<div>
-
-**Training**
 ```
-for b in 1..B:
-    L_b = N draws from L, with replacement
-    model_b = learner(L_b)
-```
+for b in 1 … 50:
+    copy_b = bootstrap sample of the data
+    tree_b = train a tree on copy_b
 
-**Prediction**
-```
-label:  majority vote of model_1..B (x)
-number: average of   model_1..B (x)
+to predict a new patient:
+    ask all 50 trees
+    label  →  majority vote
+    number →  average
 ```
 
-</div>
-<div>
+Nothing inside the tree learner changes. Breiman: all you add is "a loop in front … and a back end that does the aggregation."
 
-**What's new vs. one tree**
-
-Nothing inside the learner changes.
-
-Breiman: all you add is "a loop in front that selects the bootstrap sample and a back end that does the aggregation."
-
-Breiman used **B = 50** for classification, **25** for regression.
-
-</div>
-</div>
+<!--
+Bagging is just that: 50 bootstrap copies, 50 trees, majority vote. For predicting numbers, average instead. The learner itself is untouched. That's the entire algorithm.
+-->
 
 ---
 
-<div class="kicker">Running example</div>
-
-## Three trees vote on a new patient
+## 8. Three trees vote on a new patient
 
 New patient: glucose 130, BMI 35, age 45.
 
-| Tree | Grown on | Its first question | Says |
+| Tree | Trained on | Its first question | Says |
 |---|---|---|---|
-| 1 | L⁽¹⁾ | glucose > 127? | diabetic |
-| 2 | L⁽²⁾ | BMI > 30? | diabetic |
-| 3 | L⁽³⁾ | age > 48? | not diabetic |
+| 1 | copy 1 | glucose > 127? | diabetic |
+| 2 | copy 2 | BMI > 30? | diabetic |
+| 3 | copy 3 | age > 48? | not diabetic |
 
-**Vote: 2–1 → diabetic.**
+<div class="big">2 – 1 → diabetic</div>
 
-Each tree picked up a different pattern because each saw different patients. The vote cancels out the odd one.
+A 2–1 vote also says something a single tree never can: **this one isn't certain.**
 
-The 2–1 split also tells us something: this prediction is **less sure** than a 3–0 vote. More on that later.
-
----
-
-<div class="kicker">Why it works · regression</div>
-
-## Averaging never hurts, and helps the unstable
-
-Let e = error of a single model, e_A = error of the aggregated model. Using (E Z)² ≤ E Z²:
-
-<div style="text-align:center; font-size: 34px; margin: 10px 0;">
-
-e_A ≤ e
-
-</div>
-
-How much smaller depends on the gap between [E φ(x, L)]² and E φ²(x, L): the **variance** of the model across learning sets.
-
-| Learner | Model changes with L? | Gain from bagging |
-|---|---|---|
-| decision tree | a lot | large |
-| nearest neighbour | barely | none |
-
-Bootstrap copies are not real new data, so there is a small price. For unstable learners the gain swamps it.
+<!--
+Three trees from three copies. Each latched onto a different pattern because each saw different patients. Two say diabetic, one says not. Majority wins. And the 2-1 split itself tells us the prediction is shaky. A single tree can't tell you that.
+-->
 
 ---
 
-<div class="kicker">Why it works · classification</div>
-
-## Voting amplifies whatever the tree does most often
-
-Let Q(j | x) = how often the learner, across learning sets, says class j for input x.
-
-- Single tree: right with probability Q(correct | x), could be 60%.
-- Bagged: votes for argmax Q, so if 60% of trees are right, the vote is right **nearly always**.
-
-**The catch:** if the learner is *usually wrong* on x, voting makes it *always* wrong.
-
-> "Bagging unstable classifiers usually improves them. Bagging stable classifiers is not a good idea."
-
-Bagging turns **good** classifiers into **nearly optimal** ones. It does not rescue bad ones.
-
----
-
-<div class="kicker">In the paper · Table 1 · test error %, lower is better</div>
-
-## Classification trees, 7 datasets, 50 bootstrap copies
-
-| Dataset | Single tree | Bagged | Decrease |
-|---|---|---|---|
-| waveform | 29.0 | 19.4 | 33% |
-| heart (UCSD Medical Center) | 10.0 | 5.3 | **47%** |
-| breast cancer | 6.0 | 4.2 | 30% |
-| ionosphere | 11.2 | 8.6 | 23% |
-| <span class="hl">diabetes (Pima)</span> | <span class="hl">23.4</span> | <span class="hl">18.8</span> | <span class="hl">20%</span> |
-| glass | 32.0 | 24.9 | 22% |
-| soybean | 14.5 | 10.6 | 27% |
-
-Protocol: random train/test split, one CART tree vs. 50 bagged trees, averaged over **100 splits**. Bagging won on every dataset.
-
----
-
-<div class="kicker">In the paper · sections 3, 6</div>
-
-## Regression, and how many copies you need
+## 9. Why it works: averaging cancels noise
 
 <div class="cols">
 <div>
 
-**Regression trees** (Table 3, mean squared error)
+**Unstable learner (tree)**
 
-| Dataset | Decrease |
-|---|---|
-| Boston housing | 39% |
-| Ozone | 22% |
-| Friedman #1 / #2 / #3 | 46% / 30% / 38% |
+50 copies → 50 different trees
+Averaging their answers removes the wobble
 
-Average instead of vote. Same story.
+<span class="good">big gain</span>
 
 </div>
 <div>
 
-**How many bootstrap copies?** (waveform)
+**Stable learner (nearest neighbour)**
 
-| Copies | Error % |
-|---|---|
-| 0 (one tree) | 29.0 |
-| 10 | 21.8 |
-| 25 | 19.5 |
-| 50 | 19.4 |
-| 100 | 19.4 |
+50 copies → 50 nearly identical answers
+Nothing to average away
 
-> "More than 25 bootstrap replicates is love's labor lost."
+**no gain**
 
 </div>
 </div>
-
----
-
-<div class="kicker">In the paper · sections 5, 6.3</div>
-
-## When bagging does nothing, or hurts
-
-<div class="cols">
-<div>
-
-**Stable learner: nearest neighbour** (Table 5)
-
-| Dataset | Single | Bagged |
-|---|---|---|
-| waveform | 26.1 | 26.1 |
-| heart | 6.3 | 6.3 |
-| diabetes | 16.4 | 16.4 |
-
-Identical to the decimal. A test point's nearest neighbour is in ≥ half the copies, so the vote never flips.
-
-</div>
-<div>
-
-**Linear regression with variable selection** (Fig. 1)
-
-Pick m of 30 variables. Few variables = unstable, all 30 = stable.
-
-- few variables: bagged **wins**
-- many variables: bagged **loses**
-
-The curves cross. And when the single model was already near-optimal, bagging gave nothing.
-
-</div>
-</div>
-
----
-
-<div class="kicker">Summary of the method</div>
-
-## Pros and cons
-
-<div class="cols">
-<div>
-
-**Pros**
-- Works with any learner, unchanged
-- Big accuracy gains on unstable learners (20–47%)
-- 10–25 copies capture most of the gain
-- Vote split gives a confidence signal
-- "Almost a dream procedure for parallel computing": copies never talk to each other
-
-</div>
-<div>
-
-**Cons**
-- B× the training and prediction cost
-- Lose the readable single tree
-- Does nothing for stable learners
-- Can make a *bad* classifier worse
-- Only attacks variance, not bias
-
-</div>
-</div>
-
----
-
-<div class="kicker">My implementation</div>
-
-## The experiment: diabetes from 8 measurements
-
-<div class="cols">
-<div>
-
-**768** patients (Kaggle: *Pima Indians Diabetes*)
-**8** measurements: glucose, BMI, age, insulin, pregnancies, …
-**35%** diabetic (268), the rest not
-
-**Why this dataset**
-- It is in Breiman's own Table 1, so I can compare
-- Noisy and overlapping classes: trees overfit, which is where bagging should help
-- Small, numeric, no missing values
-
-</div>
-<div>
-
-**The paper's questions, on new data**
-1. Does bagging beat a single tree?
-2. How many copies are enough?
-3. Does bagging a stable learner (1-NN) move?
-4. Does the vote split signal confidence?
-5. What does it cost?
-
-**Setup**: sklearn `DecisionTreeClassifier` + `BaggingClassifier`; 80/20 stratified split × **50 random splits**; mean ± 95% CI.
-
-</div>
-</div>
-
----
-
-<div class="kicker">My implementation · 50 random splits · lower is better</div>
-
-## Results: accuracy, confidence, speed
-
-| Method | Test error % (95% CI) | Train (ms) | Predict (µs / patient) |
-|---|---|---|---|
-| single tree | 30.08 ± 0.98 | 1.1 | 0.2 |
-| **bagged trees (50)** | <span class="good">23.86 ± 0.77</span> | 45.3 | 9.6 |
-| single 1-NN (stable) | 29.52 ± 0.84 | 0.2 | 2.9 |
-| bagged 1-NN (50) | 29.35 ± 0.83 | 17.8 | 106.3 |
-
-- Bagging cut the tree's error by **21%** (Breiman got 20% on this data: 23.4 → 18.8).
-- Bagged beats single in **49 of 50 splits** (sign test p < 10⁻¹³).
-- 1-NN: 37 of 50 splits identical, as the paper predicts.
-- Cost: ~40× training time, ~50× prediction time, still 10 µs per patient.
-
-<span class="small">Breiman's absolute numbers are lower because he duplicated diabetic cases and pruned trees by cross-validation.</span>
-
----
-
-<div class="kicker">My implementation · question 2</div>
-
-## How many copies? Ten gets most of it
-
-![w:800](curve.png)
-
-Matches Table 5.1: 30.0 → 25.7 by 10 copies, 23.9 by 50, flat after.
-
----
-
-<div class="kicker">My implementation · question 4 · confidence</div>
-
-## The vote split knows when the model is unsure
-
-![w:800](confidence.png)
-
-Lopsided votes are right 92% of the time, near-ties are a coin flip. A single tree gives no such signal.
-
----
-
-## Conclusions
-
-1. **Bagging = bootstrap + vote.** A loop in front, a vote at the back, the learner untouched.
-2. **It fixes instability.** Trees: 20–47% less error in the paper, 21% on Pima here. Nearest neighbour: no change, as predicted.
-3. **Cheap to get most of the gain.** 10–25 copies.
-4. **The vote split is a confidence estimate.** 57% accuracy on close votes, 92% on lopsided ones.
-5. **For our project:** each bootstrap copy is an independent job with no communication, so bagging maps directly onto a swarm of learner agents and one coordinator that votes.
 
 <br>
 
-<span class="small">Code and notebook: `slides/bagging_1996/bagging_pima_diabetes.ipynb` in the course repo.</span>
+Breiman's proof: the squared error of the average is never above the average squared error. The gap is the learner's variance. No variance, no gap.
+
+> "Bagging unstable classifiers usually improves them. Bagging stable classifiers is not a good idea."
+
+<!--
+Why does it work? Averaging cancels noise. If the learner wobbles a lot between copies, averaging removes the wobble. If it barely wobbles, like nearest neighbour, there's nothing to remove. Breiman proves the averaged error is never worse, and the gain is the learner's variance.
+-->
+
+---
+
+## 10. Breiman's results: better on every dataset
+
+| Dataset | One tree | 50 bagged | Decrease |
+|---|---|---|---|
+| waveform | 29.0 | 19.4 | 33% |
+| heart (UCSD Medical Center) | 10.0 | 5.3 | 47% |
+| breast cancer | 6.0 | 4.2 | 30% |
+| ionosphere | 11.2 | 8.6 | 23% |
+| **diabetes** | **23.4** | **18.8** | **20%** |
+| glass | 32.0 | 24.9 | 22% |
+| soybean | 14.5 | 10.6 | 27% |
+
+Test error %, averaged over 100 random splits. Nearest neighbour: **no change** on any dataset.
+
+How many copies? 10 gets most of the gain, 25 nearly all. *"More than 25 is love's labor lost."*
+
+<!--
+Seven datasets, error down 20 to 47 percent on every one. The heart data is from UCSD Medical Center. Nearest neighbour, the stable learner, didn't move at all. And you don't need 50 copies: 10 gets most of it.
+-->
+
+---
+
+## 11. My run: same story on the diabetes data
+
+50 random 80/20 splits, sklearn trees. Error is mean ± 95% CI.
+
+| Method | Test error % | Train (ms) | Predict (µs / patient) |
+|---|---|---|---|
+| one tree | 30.1 ± 1.0 | 1.1 | 0.2 |
+| **50 bagged trees** | <span class="good">23.9 ± 0.8</span> | 45 | 9.6 |
+| nearest neighbour | 29.5 ± 0.8 | 0.2 | 2.9 |
+| 50 bagged NN | 29.4 ± 0.8 | 18 | 106 |
+
+- **Accuracy:** 21% less error (Breiman: 20%). Bagging won on 49 of 50 splits.
+- **Confidence:** when the 50-tree vote is lopsided (>45–5) it is right **92%** of the time; when it is close (<30–20) only **57%**.
+- **Speed:** ~40× slower to train and predict, but still 10 µs per patient.
+
+<!--
+I ran it on the diabetes data. One tree: 30% error. 50 bagged trees: 24%. That's a 21% drop; Breiman got 20% on the same data. Nearest neighbour didn't move, as predicted. For confidence, I looked at the vote split: lopsided votes are right 92% of the time, close votes are a coin flip. Cost is about 40x, but that's 10 microseconds per patient.
+-->
+
+---
+
+## 12. Takeaways
+
+1. **Bootstrap** fakes new datasets by resampling the one you have. It is a fair fake because your sample stands in for the population.
+2. **Bagging** = bootstrap copies + vote. The learner is untouched.
+3. It fixes **unstable** learners (trees: −20% to −47%). Stable ones gain nothing.
+4. The **vote split** is a free confidence estimate.
+5. Each copy trains with **zero communication** to the others. Breiman: "almost a dream procedure for parallel computing." That is why it maps onto a swarm of learner agents and one coordinator that votes.
+
+<span class="small">Code: `slides/bagging_1996/bagging_pima_diabetes.ipynb`</span>
+
+<!--
+Takeaways. Bootstrap fakes datasets. Bagging votes over them. It works on unstable learners, not stable ones. The vote split gives confidence for free. And each copy trains alone, which is exactly why it fits our agents project: one coordinator, many independent learners.
+-->
