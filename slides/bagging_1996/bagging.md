@@ -13,6 +13,7 @@ style: |
   .good { color: #2e8b57; font-weight: bold; }
   .small { font-size: 20px; color: #555; }
   .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+  .small-tables { font-size: 22px; } .small-tables table { font-size: 20px; } .small-tables th, .small-tables td { padding: 4px 10px; }
   .big { font-size: 40px; text-align: center; margin: 30px 0; }
   pre { font-size: 23px; }
   blockquote { border-left: 5px solid #1f5fa8; padding-left: 18px; font-style: italic; }
@@ -253,7 +254,26 @@ Why does it work? Averaging cancels noise. If the learner wobbles a lot between 
 
 ---
 
-## 10. Breiman's results: better on every dataset
+## 10. The theorem: aggregating never raises squared error
+
+φ(x, L) = model trained on learning set L. φ_A(x) = E_L φ(x, L) = the aggregated model.
+
+<div class="big">e_A ≤ e</div>
+
+**Proof in one line.** For any random Z, (E Z)² ≤ E Z². With Z = φ(X, L):
+E_L φ²(X, L) ≥ [E_L φ(X, L)]² = φ_A(X)², so E(Y − φ)² ≥ E(Y − φ_A)².
+
+**The gap is the variance of φ across learning sets.** Unstable: big gap. Stable: no gap.
+
+**Classification.** Voting amplifies whatever the learner does *most often* on x. Usually right → nearly always right. Usually wrong → always wrong. Bagging makes good classifiers near-optimal; it cannot rescue bad ones.
+
+<!--
+Here is the actual theorem. The aggregated model's squared error is never above the single model's. Proof: the square of an expectation is at most the expectation of the square. The gap between the two sides is the variance of the model across learning sets, which is instability. For classification, voting amplifies whatever the learner does most often on that input: good becomes near-optimal, but bad becomes worse.
+-->
+
+---
+
+## 11. Breiman's results: better on every dataset
 
 | Dataset | One tree | 50 bagged | Decrease |
 |---|---|---|---|
@@ -265,17 +285,85 @@ Why does it work? Averaging cancels noise. If the learner wobbles a lot between 
 | glass | 32.0 | 24.9 | 22% |
 | soybean | 14.5 | 10.6 | 27% |
 
-Test error %, averaged over 100 random splits. Nearest neighbour: **no change** on any dataset.
-
-How many copies? 10 gets most of the gain, 25 nearly all. *"More than 25 is love's labor lost."*
+Test error %, one CART tree vs. 50 bagged trees, averaged over 100 random train/test splits.
 
 <!--
-Seven datasets, error down 20 to 47 percent on every one. The heart data is from UCSD Medical Center. Nearest neighbour, the stable learner, didn't move at all. And you don't need 50 copies: 10 gets most of it.
+Seven datasets, error down 20 to 47 percent on every one. The heart data is from UCSD Medical Center. Same protocol each time: random split, one tree versus 50 bagged trees, repeated 100 times.
 -->
 
 ---
 
-## 11. My run: same story on the diabetes data
+## 12. The rest of the paper's evidence
+
+<div class="cols small-tables">
+<div>
+
+**Regression trees** (Table 3, MSE)
+
+| Dataset | Decrease |
+|---|---|
+| Boston housing | 39% |
+| Ozone | 22% |
+| Friedman #1 / #2 / #3 | 46% / 30% / 38% |
+
+Average instead of vote. Same story.
+
+**Nearest neighbour, a stable learner** (Table 5)
+
+| Dataset | Single | Bagged |
+|---|---|---|
+| waveform | 26.1 | 26.1 |
+| heart | 6.3 | 6.3 |
+| diabetes | 16.4 | 16.4 |
+
+Identical to the decimal, on every dataset.
+
+</div>
+<div>
+
+**How many copies?** (Table 5.1, waveform)
+
+| Copies | Error % |
+|---|---|
+| 0 (one tree) | 29.0 |
+| 10 | 21.8 |
+| 25 | 19.5 |
+| 50 | 19.4 |
+| 100 | 19.4 |
+
+> "More than 25 bootstrap replicates is love's labor lost."
+
+</div>
+</div>
+
+<!--
+Three more tables from the paper. Regression trees, averaging instead of voting: 22 to 46 percent less error. Nearest neighbour, the stable learner: identical to the decimal on every dataset. And how many copies you need: 10 gets most of the gain, 25 nearly all of it.
+-->
+
+---
+
+## 13. When bagging hurts
+
+Section 5: linear regression, 30 variables, 60 examples. The learner picks the best m variables, then fits a line.
+
+| Variables used | Learner is | Result |
+|---|---|---|
+| few | unstable: small data changes swap which get picked | **bagged wins** |
+| all 30 | stable: nothing to pick | **bagged loses** |
+
+The error curves **cross**. Once the gain shrinks to nothing, the cost of training on resamples instead of real data takes over.
+
+Second limit: when the single model was already near-optimal (only 3 variables mattered), bagging gave **no** improvement.
+
+<div class="big">unstable <em>and</em> not already optimal</div>
+
+<!--
+Breiman also shows where it fails. Variable selection in regression: with few variables the picking is unstable and bagging wins; with all 30 there's nothing to pick, the learner is stable, and bagging actually loses. The curves cross. And when the single model was already near-optimal, bagging gave nothing. So two conditions: unstable, and not already optimal.
+-->
+
+---
+
+## 14. My run: same story on the diabetes data
 
 50 random 80/20 splits, sklearn trees. Error is mean ± 95% CI.
 
@@ -296,7 +384,7 @@ I ran it on the diabetes data. One tree: 30% error. 50 bagged trees: 24%. That's
 
 ---
 
-## 12. Takeaways
+## 15. Takeaways
 
 1. **Bootstrap** fakes new datasets by resampling the one you have. It is a fair fake because your sample stands in for the population.
 2. **Bagging** = bootstrap copies + vote. The learner is untouched.
