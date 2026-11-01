@@ -1,0 +1,46 @@
+/Users/andrewchen/dsc180-work/andrew/run-02
+[init] tools: ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write', 'mcp__harness__run_validation']
+Code builds. Next I'm training on a local 80/20 split of `train/` to check accuracy and timing before I use a validation call.
+Holdout result: AUC 0.9956, but detection levels off at 98.5%, so a few faces are getting rejected by the early stages. Checking where they stop:
+Better: AUC 0.9971 and only 3 faces rejected, all in stage 1. Looking at how stage 1 is built:
+Stage 1 hits its FP target after 3 stumps, but with so few stumps the stage-sum values are coarse. Trying more slack (SAFETY=1.0) and higher caps on stage size:
+Holdout now: AUC 0.9990, detection 99.7% at every FP level, and 1 of 397 faces rejected early. About 9% of non-faces reach the final stage. Running the official validation:
+Good result. Writing a short README into `learner/` and cleaning up the build files.
+I built a Viola–Jones-style cascade in `learner/`. It has 5 stages, rejects most non-faces after a few features, and used 1 of the 8 validation calls.
+
+## Validation results
+| | |
+|---|---|
+| AUC | 0.998 |
+| Detection at 1%, 5% and 10% FP | 0.995, with precision 1.000 and 0 false positives at all three |
+| Train time | 24 s wall (120 s CPU, multithreaded) |
+| Predict time | 1,046 images in 0.17 s wall (162 µs per image, 0.05 s CPU) |
+| Cascade layout | 5 stages with 5, 11, 23, 37 and 250 weak classifiers |
+
+Detection is 0.995 at all three FP levels and the false-positive count is 0 at each, so about 2 validation faces end up below every non-face. They are most likely faces the early stages rejected, which is the main thing that could limit results on the harder test set.
+
+## Algorithm
+- **Features:** Haar-like features on the 19×19 integral image: two-rectangle, three-band, checkerboard and centre-surround. There are 67k in total; training uses a fixed random subset of 32k. Each feature's weights sum to zero, so dividing by the patch's standard deviation removes contrast differences. Flat patches use a standard deviation of 1, so there's no division by zero.
+- **Weak classifiers:** each is a decision stump boosted with Real AdaBoost, where each side outputs a confidence of ½·ln(W⁺/W⁻). To make training fast, the best split is searched over 64 quantile bins per feature.
+- **Stages:** each of the 4 early stages adds stumps until its non-face pass rate on training data falls to 0.50, 0.45, 0.40 and 0.40 respectively. The caps are 6, 12, 30 and 60 stumps. The final stage has 250 stumps and no rejection threshold; its margin orders the faces that get that far.
+- **Score:** for an image that stops at stage k, the score is (k−1) + sigmoid((margin − threshold)/scale). An image rejected at stage k therefore always scores below every image that gets past it.
+
+## How I set the thresholds
+I held out 15% of the faces, plus their mirror images, and never trained the early stages on them. Each early stage's threshold is placed at the 99.8% quantile of those faces' margins, minus one standard deviation. The final stage then trains on all faces.
+
+I tested this on my own 80/20 split of `train/` before using validation. Setting thresholds straight at a quantile let 1.5–3% of faces be rejected early. Adding the one-standard-deviation slack brought that to 0.25% and raised AUC from 0.994 to 0.999.
+
+## Shortage of negatives
+I built a pool of extra non-faces from the 3,866 training non-faces only. Each one appears in 8 flipped and rotated versions, each also shifted by one pixel in 4 directions, giving about 154k patches. Each stage trains on up to 6,000 pool patches that the earlier stages let through. That left about 3,500 hard negatives for the final stage, so I used a few stronger stages rather than many small ones. Faces are only augmented with their mirror image.
+
+## Hyperparameters
+- 64 bins per feature
+- 32k features
+- 15% of faces held out for thresholds
+- Threshold quantile 0.998, with 1.0 standard deviation of slack
+- At most 6,000 negatives per stage
+- 250 weak classifiers in the final stage
+
+`README.md` in `learner/` describes the design.
+[done] success, turns=17
+[saved] /Users/andrewchen/DSC180-2026/agents/andrew/runs/run-02

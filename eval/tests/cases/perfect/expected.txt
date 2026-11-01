@@ -1,0 +1,4 @@
+n_pos=4 n_neg=4 auc=1.000000
+fp_count=0 fp_allowed=0 threshold=7 tp=4 fp=0 tpr=1.000000 fpr=0.000000 precision=1.000000
+fp_count=1 fp_allowed=1 threshold=7 tp=4 fp=0 tpr=1.000000 fpr=0.000000 precision=1.000000
+fp_count=4 fp_allowed=4 threshold=7 tp=4 fp=0 tpr=1.000000 fpr=0.000000 precision=1.000000

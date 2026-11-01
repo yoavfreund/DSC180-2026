@@ -8,16 +8,21 @@ detector.
 
 ```
 DSC180-2026/
-├── face.train.tar.gz       # original download, full UNSPLIT set (raw backup)
 ├── train/
 │   ├── face/               # 2,065 face images
 │   └── non-face/           # 3,866 non-face images
 ├── validate/
 │   ├── face/               #   364 face images
 │   └── non-face/           #   682 non-face images
-├── validate_manifest.txt   # exact list of files placed in validate/
+├── pipeline/               # stage.py (leak-free staging) + SPEC.md (learner/eval contract)
+├── eval/                   # shared C evaluator + its tests
+├── harness/                # run_validation.py (agent's validation tool) + sandbox profile
+├── agents/<name>/          # each student's agent and its saved runs
 └── DATA_SPLIT.md           # this file
 ```
+
+The readable `face/` and `non-face/` folders are the team's source of truth.
+**Agents never see them.** See [How agents see the data](#how-agents-see-the-data).
 
 | Class      | Original | Train | Validate | Validate % |
 |------------|---------:|------:|---------:|-----------:|
@@ -30,7 +35,8 @@ No file appears in both `train/` and `validate/`.
 ## The data
 
 - **Source:** MIT Center for Biological and Computational Learning (CBCL)
-  Face Database #1, training portion (`face.train.tar.gz`).
+  Face Database #1, training portion (`face.train.tar.gz`, no longer kept
+  in the repo; the unsplit tree is in commit `25d972e`).
 - **Format:** binary PGM (`P5`), **19×19 pixels**, 8-bit grayscale
   (max value 255). Each file is about 374 bytes: a short text header followed
   by 361 pixel bytes.
@@ -67,8 +73,6 @@ img = np.asarray(Image.open("train/face/face00001.pgm"))  # shape (19, 19), dtyp
    using one RNG shared across both classes: `face` first, then `non-face`.
 3. Move the chosen files with `git mv` into `validate/<class>/`, so git
    records them as renames.
-4. Write the chosen paths to `validate_manifest.txt`, one `class/filename`
-   per line.
 
 The selection code:
 
@@ -85,8 +89,8 @@ for cls in ["face", "non-face"]:
         print(f"{cls}/{name}")
 ```
 
-Run against the full, unsplit `train/` folder, this prints exactly the
-contents of `validate_manifest.txt`.
+Run against the unsplit `train/` folder from commit `25d972e`, this
+reproduces exactly the 1,046 files now in `validate/` (checked).
 
 ## Design decisions
 
@@ -96,9 +100,8 @@ contents of `validate_manifest.txt`.
   the ratio in validate could drift from train's.
 - **Moved, not copied.** Keeping each image in only one place makes leakage
   between train and validate impossible.
-- **Fixed seed (42) and saved manifest.** Anyone can check or rebuild the
-  exact split. If you change the split, update the manifest and this
-  document too.
+- **Fixed seed (42).** Anyone can check or rebuild the exact split with the
+  code above. If you change the split, update this document too.
 - **Round down.** `floor(0.15 × 2429) = 364` and `floor(0.15 × 4548) = 682`.
 - **Non-faces sampled from the whole pool, not per source image.** We drew
   15% of all non-faces at random, without balancing each prefix (`B20`,
@@ -112,10 +115,55 @@ contents of `validate_manifest.txt`.
   untouched estimate of performance, use the separate CBCL **test** set,
   which this repo doesn't include yet.
 
+## How agents see the data
+
+An audit of the readable folders found several ways an agent could learn
+labels without learning faces:
+
+| Leak | Evidence | Fix |
+|---|---|---|
+| Folder and file names | `face/face00001.pgm`, `non-face/B1_00001.pgm` | neutral random ids |
+| **File timestamps** | every face has mtime July 1997, every non-face April 1999 | one fixed mtime for all files |
+| Git history | renaming in the repo would leave the labeled paths in history | agents run outside the repo |
+| Validate labels | an agent able to read `validate/face/` could memorize those images by their pixels | agents never get validate images or labels |
+| Public dataset | CBCL, test set included, can be downloaded | agents have no network |
+
+So `pipeline/stage.py` builds a **staged** copy outside the repo
+(`~/dsc180-private/staged/<split>/`). It has neutral ids from a seeded
+permutation, rewritten files with one canonical header and one mtime,
+`labels.txt`, and a `ledger.tsv` mapping each id back to its original. Train,
+validate and (on test day) the CBCL test set all go through the same script.
+
+- An agent's workspace (`~/dsc180-work/<agent>/<run>/`) holds only staged
+  **train** images and labels plus an empty `learner/`.
+- Validation goes only through `harness/run_validation.py`, which returns
+  rounded aggregate metrics.
+- See `pipeline/SPEC.md` for the contract and `agents/andrew/agent.py` for the
+  isolation layers.
+
+```bash
+python3 pipeline/stage.py prepare                 # stage train + validate (once)
+python3 pipeline/stage.py workspace andrew run-01 # agent.py does this itself
+```
+
+### Other audit findings
+
+- **18 non-face patches are the same flat gray image** (σ = 0), and 5 of them
+  are in validate. Learners must handle zero variance (see SPEC).
+  There are also 3 duplicate face pairs, all within train.
+- **Near-duplicates across splits are rare.** 0.3% of validate faces
+  correlate above 0.99 with some train face, about the same rate as within
+  train. The split stays as is.
+- **Validate is close to saturated.** It comes from the same pool as train,
+  and the median validate face correlates 0.945 with its nearest train face.
+  A mean-face baseline already scores AUC 0.973, and the first agent run
+  (`agents/andrew/runs/run-01`, 600-round AdaBoost) scored 0.99999. A
+  shuffled-label control of that same code scores 0.42, so the pipeline
+  isn't leaking. Validate is just easy. That makes it a weak signal for
+  telling strong solutions apart; the CBCL test set will be the real
+  comparison.
+
 ## Caveats
 
-- `face.train.tar.gz` still contains the **full, unsplit** set. Extracting it
-  over the repo restores the original `train/` folder and breaks the split.
-  Treat it as a raw backup only.
-- macOS `.DS_Store` files have been committed in a few places. They can be
-  ignored, and adding them to a `.gitignore` is a good idea.
+- Some macOS `.DS_Store` files were committed before `.gitignore` existed.
+  Git still tracks them until they are removed with `git rm --cached`.

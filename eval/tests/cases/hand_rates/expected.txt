@@ -1,0 +1,4 @@
+n_pos=3 n_neg=3 auc=0.611111
+fp_rate=0.34 fp_allowed=1 threshold=4 tp=1 fp=0 tpr=0.333333 fpr=0.000000 precision=1.000000
+fp_rate=0.67 fp_allowed=2 threshold=1 tp=3 fp=2 tpr=1.000000 fpr=0.666667 precision=0.600000
+fp_rate=1 fp_allowed=3 threshold=1 tp=3 fp=2 tpr=1.000000 fpr=0.666667 precision=0.600000

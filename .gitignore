@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+.venv/
+
+# personal Claude Code config (instructions, local settings)
+.claude/
+
+# build outputs
+eval/eval
+harness/tests/*/train
+harness/tests/*/predict
