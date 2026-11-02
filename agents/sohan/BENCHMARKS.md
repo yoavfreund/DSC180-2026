@@ -39,7 +39,7 @@ The CBCL test set is the real comparison.
 - **run-02:** model `claude-sonnet-5-5`, 9 turns, 1 of 8 validation calls,
   cascade required. The saved `learner/` is byte-identical to the validated build.
 - The agent tried to tighten its stage cutoff (non-face pass rate 0.45 to 0.35)
-  after validation, but the edit failed. The frozen learner uses 0.45, and 0.35
+  just before its validation call, but the edit failed. The frozen learner uses 0.45, and 0.35
   is untested.
 - **Isolation (`runs/redteam-1`, model `claude-opus-5-5`):** reads of private
   labels and files outside the workspace, git and network were all blocked, and
