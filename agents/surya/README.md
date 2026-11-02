@@ -1,9 +1,8 @@
 # Surya's learner
 
-`agent.py` follows Andrew's launcher lifecycle: prepare training data and an
+`agent.py` follows the launcher lifecycle: prepare training data and an
 empty learner, run an agent with a validation tool, and save logs. It uses
-native Linux Codex inside Ubuntu WSL instead of the Claude SDK. Andrew's run contents
-are not inputs to this launcher.
+native Linux Codex inside Ubuntu WSL.
 
 Your implementation lives directly in `agents/surya/runs/<run-id>/learner/`.
 Each run also holds its training copy, instructions, configuration, and logs.
