@@ -1,0 +1,9 @@
+# Generated training copies, local launch configuration, and build products.
+runs/*/train/
+runs/*/.codex/
+runs/*/start-codex.ps1
+runs/*/run-codex.ps1
+runs/*/learner/train
+runs/*/learner/predict
+runs/*/learner/*.o
+runs/*/learner/model*

@@ -1,0 +1,8 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "[validation call 1/2]\nvalidation: 364 faces, 682 non-faces, AUC 0.997\nat FP rate <= 0.01: detection rate 0.986, precision 0.984, false positives 6\nat FP rate <= 0.05: detection rate 0.989, precision 0.952, false positives 18\nat FP rate <= 0.1: detection rate 0.989, precision 0.952, false positives 18\ntiming: train 29.7 s wall (29.7 s CPU); predict 3.6 us CPU per image (start-up and model loading, 3.3 ms, excluded)\npredict batch: 1046 images, 0.173 s wall (0.022 s CPU), including start-up, model loading and image I/O\nmodel size: 4922 bytes; peak resident memory: train 156.23 MiB, predict 2.23 MiB\ncascade: 4 stages, weak classifiers per stage: 14,37,64,45\nweak classifiers evaluated per image: non-faces 27.5, faces 158.4 (of 160)"
+    }
+  ]
+}

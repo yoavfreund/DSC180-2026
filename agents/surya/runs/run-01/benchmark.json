@@ -1,0 +1,55 @@
+{
+  "source": "eval/eval.c",
+  "eval_source_sha256": "3aff8a316fb3dcc9d9ff089e31c2977fe36e14d5b04a6bb7b102baff9d4298aa",
+  "run": "sirio/run-01",
+  "frozen_build": "build_001",
+  "n_train": 5931,
+  "n_predict": 1046,
+  "timing_method": "Bubblewrap --as-pid-1; wall perf_counter; CPU RUSAGE_CHILDREN user+system",
+  "predict_batch_includes": "startup, model loading, image IO, classification, score output",
+  "train": {
+    "wall_s": 26.320892184999998,
+    "cpu_s": 22.585642999999997
+  },
+  "retrained_model_matches_validated_model": true,
+  "predict_batch": {
+    "wall_s": 0.37205149999999776,
+    "cpu_s": 0.03247800000000001
+  },
+  "eval_output": "n_pos=364 n_neg=682 auc=0.997637\nfp_rate=0.01 fp_allowed=6 threshold=3.3279525209440002 tp=358 fp=2 tpr=0.983516 fpr=0.002933 precision=0.994444\nfp_rate=0.05 fp_allowed=34 threshold=2.1951603274320002 tp=362 fp=31 tpr=0.994505 fpr=0.045455 precision=0.921120\nfp_rate=0.1 fp_allowed=68 threshold=2.1951603274320002 tp=362 fp=31 tpr=0.994505 fpr=0.045455 precision=0.921120\n",
+  "evaluation_matches_original": true,
+  "predict_timing_repeats": {
+    "full": [
+      {
+        "wall_s": 0.008253146999997796,
+        "cpu_s": 0.007954000000002404
+      },
+      {
+        "wall_s": 0.007807553000006351,
+        "cpu_s": 0.007653999999998717
+      },
+      {
+        "wall_s": 0.0073972710000020925,
+        "cpu_s": 0.00724899999999884
+      }
+    ],
+    "one": [
+      {
+        "wall_s": 0.004802231999995854,
+        "cpu_s": 0.0034270000000009015
+      },
+      {
+        "wall_s": 0.003518920000004755,
+        "cpu_s": 0.0032409999999993833
+      },
+      {
+        "wall_s": 0.004305312999996147,
+        "cpu_s": 0.004135999999999029
+      }
+    ]
+  },
+  "predict_startup_subtracted": {
+    "wall_us_per_image": 3.7113406698539118,
+    "cpu_us_per_image": 3.835406698564073
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "candidate": "C",
+  "stage_sizes": [
+    14,
+    37,
+    64,
+    45
+  ],
+  "retention": 0.995,
+  "offset": 0.25,
+  "construction_count": 3,
+  "frozen": true
+}

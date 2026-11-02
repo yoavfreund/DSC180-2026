@@ -1,0 +1,48 @@
+{
+  "run": "sirio/run-02",
+  "evaluator": "eval/eval.c",
+  "validation_source": "staged copy of repository validate/",
+  "validation_calls": 1,
+  "candidate_constructions": 3,
+  "threshold_settings": 27,
+  "selected_config": {
+    "candidate": "C",
+    "stage_sizes": [
+      14,
+      37,
+      64,
+      45
+    ],
+    "retention": 0.995,
+    "offset": 0.25,
+    "construction_count": 3,
+    "frozen": true
+  },
+  "thresholds": [
+    -2.0737275557863915,
+    -2.9067869659502388,
+    -2.955905038322921,
+    -1.73088829144763
+  ],
+  "total_classifiers": 160,
+  "zero_alpha_classifiers": 0,
+  "model_bytes": 4922,
+  "weak_evaluated": {
+    "non_face": 27.5,
+    "face": 158.4,
+    "total": 160
+  },
+  "train": {
+    "wall_s": 29.668,
+    "cpu_s": 29.664,
+    "peak_rss_kib": 159984
+  },
+  "predict": {
+    "wall_s": 0.173,
+    "cpu_s": 0.022,
+    "peak_rss_kib": 2288
+  },
+  "predict_cpu_us_per_image_excluding_startup": 3.6,
+  "eval_output": "n_pos=364 n_neg=682 auc=0.996898\nfp_rate=0.01 fp_allowed=6 threshold=3.5145824344280001 tp=359 fp=6 tpr=0.986264 fpr=0.008798 precision=0.983562\nfp_rate=0.05 fp_allowed=34 threshold=2.4739073013540001 tp=360 fp=18 tpr=0.989011 fpr=0.026393 precision=0.952381\nfp_rate=0.1 fp_allowed=68 threshold=2.4739073013540001 tp=360 fp=18 tpr=0.989011 fpr=0.026393 precision=0.952381\n",
+  "protocol_audit_passed": true
+}

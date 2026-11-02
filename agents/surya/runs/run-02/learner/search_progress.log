@@ -1,0 +1,4 @@
+A [{'weak': 6, 'threshold': -2.0825925413220596}, {'weak': 15, 'threshold': -2.5378960555172507}, {'weak': 24, 'threshold': -2.5634615466829462}, {'weak': 28, 'threshold': -2.40910996309371}, {'weak': 63, 'threshold': -3.429802849779455}, {'weak': 24, 'threshold': -2.0212387015306374}] 29.555859881999993
+B [{'weak': 10, 'threshold': -2.6855703496016385}, {'weak': 24, 'threshold': -2.582725551340649}, {'weak': 44, 'threshold': -2.466465728478857}, {'weak': 51, 'threshold': -2.0786982753287586}, {'weak': 31, 'threshold': -2.70813719886624}] 25.84453425700002
+C [{'weak': 14, 'threshold': -2.0813192412960597}, {'weak': 37, 'threshold': -1.6695900369189405}, {'weak': 64, 'threshold': -3.0265708813948997}, {'weak': 45, 'threshold': -3.2786562780213457}] 28.07565668799998
+FROZEN {'candidate': 'C', 'stage_sizes': [14, 37, 64, 45], 'retention': 0.995, 'offset': 0.25, 'construction_count': 3, 'frozen': True}

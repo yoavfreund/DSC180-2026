@@ -1,0 +1,6 @@
+{
+  "agent": "sirio",
+  "run_id": "run-01",
+  "max_validations": 20,
+  "distro": "Ubuntu"
+}

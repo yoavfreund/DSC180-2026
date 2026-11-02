@@ -1,0 +1,8 @@
+{
+  "agent": "sirio",
+  "run_id": "run-02",
+  "max_validations": 2,
+  "distro": "Ubuntu",
+  "prompt_file": "system_prompt_run02.md",
+  "prompt_sha256": "a371ac61d31161c10a5ac0b2164293d86f47359d499c8568f3376665714e3c49"
+}

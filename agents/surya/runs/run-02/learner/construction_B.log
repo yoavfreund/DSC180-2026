@@ -1,0 +1,6 @@
+loaded 18730 examples
+stage 1 weak 10 cal_faces 399 cal_neg 787 pass 0.296060991 target 0.350 met 1 remaining 233 threshold -2.68557035
+stage 2 weak 24 cal_faces 399 cal_neg 233 pass 0.330472103 target 0.350 met 1 remaining 77 threshold -2.58272555
+stage 3 weak 44 cal_faces 399 cal_neg 77 pass 0.285714286 target 0.350 met 1 remaining 22 threshold -2.46646573
+stage 4 weak 51 cal_faces 399 cal_neg 22 pass 0.318181818 target 0.350 met 1 remaining 7 threshold -2.07869828
+stage 5 weak 31 cal_faces 399 cal_neg 7 pass 0.714285714 target 0.350 met 0 remaining 5 threshold -2.7081372
