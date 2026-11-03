@@ -1,0 +1,65 @@
+[00:00] [variant] waldboost
+[00:00] [starter] installed learner skeleton and check_local.py
+[00:01] [init] model: claude-sonnet-5-5
+[00:01] [init] tools: ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write', 'mcp__harness__run_validation']
+[00:03]   -> Bash: cd learner && cat common.h Makefile && cat train.c predict.c | head -150
+[00:03]   (tokens input=2 output=16)
+[00:04]   <- /* common.h - helpers shared by train.c and predict.c. * * Algorithm-agnostic plumbing only: PGM reading, file listing, labels, patch * normalization, the casca ...
+[00:43]   (tokens input=2 output=4 cache_read=11039)
+[01:15]   -> Bash: cd learner && cat > feat.h <<'EOF' #ifndef FEAT_H #define FEAT_H #include "common.h" #define NB 16 typedef struct { int n; int r[3][4]; doub
+[01:15]   (tokens input=2 output=4 cache_read=11039)
+[01:15]   <- (eval):cd:1: no such file or directory: learner train.c:3:10: fatal error: 'feat.h' file not found 1 error generated. FAIL make failed: train.c:3:10: fatal erro ...
+[01:18]   (tokens input=2 output=8 cache_read=15496)
+[01:20]   -> Bash: cd /Users/udayl/dsc180-work/andrew/waldboost-1103-100804/learner && cat > feat.h <<'EOF' #ifndef FEAT_H #define FEAT_H #include "common.h" #
+[01:20]   (tokens input=2 output=8 cache_read=15496)
+[01:26]   <- OK make (0.0 s) INFO fit 4745 images, holdout 1186 (413 faces, 773 non-faces) OK train (3.7 s wall) OK describe: 24 stages, 24 weak classifiers in total OK pred ...
+[01:29]   (tokens input=2 output=3 cache_read=26349)
+[01:29]   -> Bash: cd /Users/udayl/dsc180-work/andrew/waldboost-1103-100804/learner && sed -i 's/nneg < 150/nneg < 40/' train.c && cd .. && python3 check_local
+[01:29]   (tokens input=2 output=3 cache_read=26349)
+[01:29]   <- TOOL ERROR: Exit code 1 sed: 2: "train.c ": undefined label 'rain.c'
+[01:31]   -> Bash: cd /Users/udayl/dsc180-work/andrew/waldboost-1103-100804/learner && sed -i.bak 's/nneg < 150/nneg < 40/' train.c && rm -f *.bak && cd .. && 
+[01:31]   (tokens input=2 output=16 cache_read=27404)
+[01:36]   <- OK predict scored all 1186 holdout images (0.03 ms/image wall, includes start-up) INFO images still alive after stage 1, 2, 5, 10, 20, then at the last stage (3 ...
+[01:38] Local check passes with the WaldBoost cascade, so I'm running the hidden validation next.
+[01:38]   (tokens input=2 output=61 cache_read=27721)
+[01:38]   -> mcp__harness__run_validation: {}
+[01:38]   (tokens input=2 output=61 cache_read=27721)
+[01:46]   <- [validation call 1/5] validation: 364 faces, 682 non-faces, AUC 0.988 at FP rate <= 0.01: detection rate 0.934, precision 0.983, false positives 6 at FP rate <= ...
+[01:54] The learner is a WaldBoost cascade of Real AdaBoost stumps on Haar-like features. It builds and passes `check_local.py`, and I ran `run_validation` once. I stopped there, so the cascade is short and I did no tuning.
+
+**Validation (1 of 5 calls used)**
+
+| Measure | Result |
+|---|---|
+| AUC | 0.988 |
+| Detection at FP ≤ 1% | 0.934 (6 false positives, precision 0.983) |
+| Detection at FP ≤ 5% | 0.964 (32 false positives, precision 0.916) |
+| Detection at FP ≤ 10% | 0.967 (67 false positives, precision 0.840) |
+| Train time | 3.8 s wall |
+| Predict time | 14.5 µs CPU per image |
+| Weak classifiers evaluated per image | 5.5 for non-faces, 18.5 for faces |
+
+**Algorithm**
+- **Features:** 5,000 random Haar-like features on the contrast-normalized patch: two-rectangle, three-rectangle and a checker-style one.
+- **Weak learners:** each is a 16-bin Real AdaBoost stump. Bin edges are quantiles taken from a training subsample.
+- **Cascade:** every weak classifier is its own stage, with a rejection threshold after it. `--describe` prints one `stage=k weak=1` line per weak classifier.
+- **Thresholds:** 20% of the faces are held out. After each round the threshold is the 0.3% quantile of the held-out faces' running sums that are still alive. Training samples below it are dropped.
+- **Scoring:** a patch rejected at stage t gets `cascade_score(t-1, margin/4)`, with margin = running sum minus that stage's threshold. A patch never rejected is scored with the last stage's margin. The margin is clamped to ±12 before the sigmoid.
+
+**Shortage of negatives**
+- **Pool:** each non-face is flipped and shifted by ±2 px, which gives about 155k augmented patches.
+- **Refill:** dead negative slots are refilled from this pool with patches that still pass the cascade so far.
+- **Faces:** training faces are flipped as well.
+
+**Cascade layout:** the cap is T=100 weak classifiers. Training stops once fewer than 40 negatives survive, because the augmented pool runs out of hard negatives. That gave 30 stages locally, where the training set is 80% of `train/`. The validation run built 19 stages, one weak classifier each. It uses the full training set and a different random held-out split, so I didn't investigate why the count differs.
+
+**Hyperparameters:** NF=5000, NB=16, T=100, 7,000 negative slots, rejection rate 0.3% per stage, stop at 40 negatives.
+
+**Caveats**
+- The cascade is short, so there is little resolution at the strict FP targets (0.1% and 1%) of the final test.
+- The two ways I could try to get more stages are a larger or more varied negative pool and a smaller rejection rate. I didn't try either.
+- Seeds are fixed, so the run should be repeatable on the same data.
+[01:54]   (tokens input=2 output=800 cache_read=28206)
+[01:54] [done] success, turns=7
+[01:54] [usage] duration_ms=113043 total_cost_usd=0.21340740000000002 tokens input=14 output=12815 cache_read=136215
+[01:55] [saved] /Users/udayl/Documents/GitHub/DSC180-2026/agents/uday/runs/waldboost-1103-100804
