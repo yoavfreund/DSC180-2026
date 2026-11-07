@@ -9,6 +9,11 @@ __pycache__/
 .claude/
 
 # build outputs
+learner/libweak.so
+learner/weak.dll
+learner/test_features
+learner/test_features.exe
+/runs/
 eval/eval
 harness/tests/*/train
 harness/tests/*/predict

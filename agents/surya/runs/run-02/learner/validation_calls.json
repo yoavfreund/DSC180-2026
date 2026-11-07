@@ -1,8 +1,0 @@
-{
-  "call_count": 1,
-  "status": "completed",
-  "selected_config_sha256": "ce6f89668cc3f090ac73a48a20feca5fcbffa4489e8dfcd53fd2b7b71110c1d8",
-  "construction_count": 3,
-  "failed_calls": 0,
-  "post_validation_changes": "Documentation only; no model, source, thresholds, or configuration changes."
-}

@@ -1,0 +1,42 @@
+DSC180-2026/
+  main.py                  # training entry point and command-line options
+  predict_ensemble.py      # apply a saved AdaBoost ensemble to image folders
+  config.py                # round, split, acceptance, timing and adapter defaults
+  Dockerfile               # builds and tests the C library and packages the app
+  .dockerignore            # limits the Docker build context to required source
+  .gitignore               # excludes generated files and run outputs
+  BOOSTING.md              # setup, training, outputs and evaluation limitations
+  LLM_ADAPTER.md           # provider adapter contract and usage
+
+  coordinator/
+    coordinator.py         # split, proposal, training, evaluation and weight updates
+    specs.py               # allowed learner specifications and fallback candidates
+    llm.py                 # separately billed OpenAI API adapter and common prompt
+    llm_chatgpt.py         # ChatGPT plan adapter, streaming Responses API
+    chatgpt_auth.py        # ChatGPT OAuth and local 50-call/five-hour cap
+
+  agents/
+    learner_agent.py       # C learner wrapper and augmented training rows
+    evaluator.py           # C weighted validation evaluator wrapper
+    combiner.py            # load saved models and combine their predictions
+
+  learner/
+    weak.c, weak.h         # C stump, tree, logistic regression and model interface
+    evaluate.c             # weighted error and class-specific metrics
+    image_features.c, image_features.h  # LBP and integral-image operations
+    Makefile               # builds libweak.so and runs C feature tests
+    tests/test_features.c  # C feature and evaluator checks
+
+  common/
+    images.py              # image loading, augmentation and C feature extraction
+    messages.py            # structured audit message builders
+    audit.py               # append-only JSONL log and bounded feedback summaries
+    splits.py              # seeded train/validation split by original row
+    hashing.py             # array hashing and request IDs
+
+  tests/                   # Python augmentation, boosting and LLM adapter tests
+  train/, validate/        # source face/non-face PGM folders, combined at runtime
+  runs/                    # ignored local outputs: models, weights, manifest and logs
+
+The Docker volume face-boosting-auth is managed outside this repository and
+stores ChatGPT plan credentials and the local request-limit database.

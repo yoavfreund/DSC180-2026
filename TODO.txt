@@ -1,0 +1,2 @@
+TODO: Build a cascade from the generated weak classifiers, organized into stages.
+TODO: Test weighting positive examples higher when evaluating accuracy and speed.
