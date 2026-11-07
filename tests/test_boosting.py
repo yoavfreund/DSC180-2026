@@ -22,6 +22,47 @@ class SlowLearner:
 
 
 class BoostingProtocolTest(unittest.TestCase):
+    def test_error_above_chance_retries_different_spec(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            learners = SimpleNamespace(variants=None, _lib=SimpleNamespace(_name="unused"),
+                                       predict=lambda handle, X: SimpleNamespace(labels=np.ones(len(X), dtype=int)))
+            evaluator = SimpleNamespace(score=mock.Mock(side_effect=[SimpleNamespace(err=.6), SimpleNamespace(err=.4)]),
+                                        describe=lambda *args: "weighted validation error: .600")
+            coordinator = Coordinator(Config(K=1, max_refine=3), learners, evaluator,
+                                      AuditLog(Path(tmp, "audit")), np.zeros((10, 714)),
+                                      np.ones(10, dtype=int), None, None, "data", tmp)
+            status = SimpleNamespace(ok=True, handle=SimpleNamespace(artifact_path="model", sha256="hash"),
+                                     error=None, elapsed_s=.1)
+            proposals = [([{"family": "stump", "features": "pixels"}], "llm", None, "proposal"),
+                         ([{"family": "stump", "features": "lbp"}], "llm", None, "proposal")]
+            with mock.patch.object(coordinator, "_propose", side_effect=proposals), \
+                 mock.patch("coordinator.coordinator._train_until", return_value=[status]) as train, \
+                 mock.patch("coordinator.coordinator._benchmark", return_value=(.01, 3)):
+                best = coordinator._round(0)
+            self.assertEqual(train.call_count, 2)
+            self.assertEqual(best["spec"]["features"], "lbp")
+            self.assertEqual(best["err"], .4)
+
+    def test_duplicate_llm_spec_is_not_retrained(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            learners = SimpleNamespace(variants=None, _lib=SimpleNamespace(_name="unused"),
+                                       predict=lambda handle, X: SimpleNamespace(labels=np.ones(len(X), dtype=int)))
+            evaluator = SimpleNamespace(score=lambda *args: SimpleNamespace(err=.6),
+                                        describe=lambda *args: "error .6")
+            coordinator = Coordinator(Config(K=1, max_refine=2), learners, evaluator,
+                                      AuditLog(Path(tmp, "audit")), np.zeros((10, 714)),
+                                      np.ones(10, dtype=int), None, None, "data", tmp)
+            status = SimpleNamespace(ok=True, handle=SimpleNamespace(artifact_path="model", sha256="hash"),
+                                     error=None, elapsed_s=.1)
+            proposal = ([{"family": "stump"}], "llm", None, "proposal")
+            with mock.patch.object(coordinator, "_propose", return_value=proposal), \
+                 mock.patch("coordinator.coordinator._train_until", return_value=[status]) as train, \
+                 mock.patch("coordinator.coordinator._benchmark", return_value=(.01, 3)):
+                coordinator._round(0)
+            self.assertEqual(train.call_count, 1)
+            records = [json.loads(line) for line in Path(tmp, "audit").read_text().splitlines()]
+            self.assertIn("DuplicateCandidatesSkipped", [r["type"] for r in records])
+
     def test_repeated_fallback_is_not_retrained(self):
         with tempfile.TemporaryDirectory() as tmp:
             learners = SimpleNamespace(variants=None, _lib=SimpleNamespace(_name="unused"),

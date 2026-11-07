@@ -17,7 +17,7 @@ from common import messages as M
 from common.audit import AuditLog
 from common.hashing import sha256_array, new_id
 from common.splits import seeded_split
-from coordinator.specs import parse_specs, DEFAULT_SPECS
+from coordinator.specs import parse_specs, validate_spec, DEFAULT_SPECS
 from common.images import extract_features
 
 EPS = 1e-6
@@ -145,6 +145,7 @@ class Coordinator:
         w_sha = sha256_array(self.w)
 
         best, feedback, fallback_used = None, None, False
+        tried_specs = set()
         for attempt in range(self.cfg.max_refine):
             if time.monotonic() >= deadline:
                 break
@@ -160,6 +161,22 @@ class Coordinator:
                 rationale=f"round {t}, attempt {attempt}: {why}",
                 source=source, specs=specs, combiner=self.cfg.combiner,
                 feedback_ref=feedback, raw_llm_output=raw))
+
+            # With the same split and weights, repeating a spec is not a new learner.
+            unique = []
+            for spec in specs:
+                normalized = validate_spec(spec)
+                key = json.dumps(normalized, sort_keys=True)
+                if key not in tried_specs:
+                    tried_specs.add(key)
+                    unique.append(normalized)
+            if len(unique) != len(specs):
+                self.audit.emit({"type": "DuplicateCandidatesSkipped", "round": t,
+                                 "attempt": attempt, "count": len(specs) - len(unique)})
+            if not unique:
+                feedback = "All proposed configurations were already tried in this round; propose different configurations."
+                continue
+            specs = unique
 
             # One learner per spec; learner_id is stable across the message trail.
             reqs = []
@@ -246,7 +263,8 @@ class Coordinator:
                 best = cand
             if best["err"] <= 0.5 - self.cfg.gamma:      # good enough: stop refining
                 break
-            feedback = self.evaluator.describe(cand["spec"], cand["eval"])
+            feedback = (self.evaluator.describe(cand["spec"], cand["eval"]) +
+                        "\nPropose configurations different from those already tried in this round.")
 
         return best
 

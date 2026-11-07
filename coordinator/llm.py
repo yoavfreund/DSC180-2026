@@ -8,7 +8,8 @@ Allowed families: "stump" (no params), "tree" (max_depth 1-6, min_leaf 1-500),
 "logreg" (iters 10-5000, lr 1e-4 to 1, l2 0 to 10).
 For each choose "features": "pixels", "lbp", or "rectangles".
 Given the history and the latest evaluator feedback, propose K specs that differ
-meaningfully. Return ONLY a JSON list of K objects with "family" and that family's
+meaningfully from one another and from previously attempted configurations in
+the current round. Return ONLY a JSON list of K objects with "family" and that family's
 params. No labels, weights, or alphas."""
 
 def propose_raw(history, feedback, k, timeout=20):

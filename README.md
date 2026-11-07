@@ -71,7 +71,10 @@ For Docker setup, ChatGPT sign-in, commands, and configuration, see
    keeps the selected candidate with the lowest error. By default it stops
    refining at error ≤ 0.49, or after three attempts. An eligible candidate
    below 0.5 may still be accepted if refinement ends without reaching 0.49.
-   If no candidate is eligible, the round is skipped and weights are unchanged.
+   If no candidate is below 0.5 and attempts and time remain, the coordinator
+   requests another proposal. It skips configurations already tried in that
+   round; repeated proposals still consume an attempt. If no candidate is
+   eligible when refinement ends, the round is skipped and weights are unchanged.
 
 8. **Update the distribution.** For the selected learner, its validation error
    `e` is clamped to `[1e-6, 1 - 1e-6]` and its ensemble weight is
