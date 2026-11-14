@@ -1,122 +1,107 @@
-# LLM-assisted image boosting
+# Agent-written weak rules for a boosted face detector
 
-This prototype trains an ensemble of concrete C classifiers to distinguish
-face and non-face image patches. A Python coordinator asks an interchangeable
-LLM adapter for candidate model specifications, evaluates the trained models,
-and updates one weight per original image after each accepted round.
+Branch `andrew-agent-learners` (Andrew's implementation). Built from `coordinating-agents`; the
+shared evaluator `eval/` comes from `harness-validation`.
 
-For Docker setup, ChatGPT sign-in, commands, and configuration, see
-[BOOSTING.md](BOOSTING.md). For a different LLM provider, see
-[LLM_ADAPTER.md](LLM_ADAPTER.md). Outstanding work is listed in
-[TODO.txt](TODO.txt).
+Every boosting round, several agents run in parallel. Each agent writes one weak rule in C. A
+plain-Python coordinator (no LLM) builds, scores and times every rule, keeps the best one under
+the current error bar, and reweights the images. After training, the chain of rules can be sliced
+into a cascade.
 
-## Pipeline, step by step
+## Quick start
 
-1. **Load the images.** `main.py` reads 19 × 19, 8-bit PGM files from
-   `train/face`, `train/non-face`, `validate/face`, and `validate/non-face`.
-   It combines the two folders into a development pool without moving files.
-   Face labels are `+1` and non-face labels are `-1`. The original file order
-   is recorded in the run's `dataset.json`.
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m pytest -q tests            # 53 tests, no LLM
+eval/tests/run_tests.sh                        # shared C evaluator tests
 
-2. **Prepare features and variants.** `common/images.py` calls the C functions
-   in `learner/image_features.c` to make local binary pattern (LBP) maps and
-   integral images. Each row has 361 normalized pixels, 289 interior LBP
-   values, and 64 normalized rectangle means. By default, two additional views
-   are prepared: a +5° rotation and a −5° rotation with a one-pixel horizontal
-   shift. Transformations use nearest-neighbor sampling and edge padding. Pass
-   `--no-augmentation` to train on originals only.
+# Baseline with no LLM: brute-force Haar search is the only agent.
+.venv/bin/python main.py --run-name haar-01 --rounds 10 --agent base=haar
 
-3. **Initialize weights.** The coordinator assigns every original image a
-   uniform weight. This single array persists across boosting rounds and is
-   normalized to sum to one after each accepted learner.
+# Claude agents (each with its own .md) against the Haar baseline. Uses your Claude subscription;
+# leave ANTHROPIC_API_KEY unset.
+.venv/bin/python main.py --run-name mix-01 --rounds 10 \
+    --agent andrew=claude:agents/prompts/andrew.md --agent base=haar
 
-4. **Make a fresh split.** For round `t`, a seeded permutation with seed
-   `42 + t` assigns approximately 33% of original images to training and 67%
-   to validation by default. The split is not stratified. Each original and
-   its variants remain on the same side. For training, the original's weight
-   is divided equally among its original and transformed views.
+# After training: cascade (calibrated on validation faces), scores, shared evaluator.
+.venv/bin/python cascade.py --run-dir runs/mix-01 --face-loss 0.01
+.venv/bin/python predict.py --run-dir runs/mix-01 --images validate --scores s.txt --key k.txt --cascade
+eval/eval s.txt k.txt --fp-rates 0.001,0.01,0.1
+```
 
-5. **Propose candidate learners.** The coordinator sends the adapter recent
-   accepted specifications and a bounded summary of aggregate audit records.
-   The adapter returns a JSON list of model and feature choices. Supported
-   models are decision stumps, bounded-depth trees, and logistic regression;
-   feature choices are pixels, LBP, and rectangle means. The coordinator
-   validates the response against `coordinator/specs.py`. This is a bounded
-   specification search; the LLM does not generate new learner code.
+## One round
 
-   If the adapter fails, times out, or returns invalid output, the coordinator
-   uses fixed fallback specifications. With the default three candidates,
-   these are stumps using pixels, LBP, and rectangle features. If a later
-   attempt in the same round would use fallback again, refinement stops
-   without retraining those fallback candidates.
+1. The bar moves one level down from where the last round ended (the first round starts at the bottom).
+2. **Attempt:** every agent starts as its own OS process. After `--deadline` seconds (default 40)
+   the coordinator kills each process group that is still running. The last rule an agent saved
+   with `submit_rule` before then counts.
+3. The coordinator re-does everything for each submission: it checks and compiles the source,
+   scores every image, fits the threshold and polarity on the weighted **training** images, and
+   measures weighted error on the hidden **validation** images.
+4. It times all new rules in turn with an empty rule, on 256 images that stay in cache.
+   `ns` = extra time over the empty rule; anything below 1 ns counts as 1 ns.
+5. If any rule seen this round is under the bar, the coordinator keeps the one with the most
+   boosting progress per ns: `-0.5 ln(1 - 4g^2) / ns`, where `g = 0.5 - error`. Then
+   `alpha = 0.5 ln((1-e)/e)` (from error only), `w *= exp(-alpha y h)` on all images, and the next round starts.
+6. Otherwise the attempt fails. After `--fails-per-level` failures (default 5) the bar moves up a
+   level. Default ladder: 0.30, 0.33, ..., 0.48, 0.49 (`--ladder` sets any list, for example big
+   steps first). When the top level is exhausted, a brute-force Haar search runs as a fallback
+   (`--no-fallback` skips the round instead).
 
-6. **Train and evaluate candidates.** Separate worker processes train the C
-   learners on the training images and their variants. For each successful
-   learner, the coordinator predicts all originals. `learner/evaluate.c`
-   computes weighted error using the original validation images only:
+Agents get written feedback before the next attempt: their own result, and after a round, the
+winner's numbers and the error they would have needed to win at their speed.
 
-   ```text
-   validation error = sum(weight of misclassified validation images)
-                      / sum(weight of all validation images)
-   ```
+## What an agent can do
 
-   The log also records mean weighted error on the two transformed validation
-   views as a robustness check. It does not affect selection or learner weight.
+An LLM agent is a Claude Agent SDK session whose system prompt is that agent's `.md`. It has **no
+built-in tools**: it cannot read or write files or run commands. Each session's start message
+records its tool list in the audit. The prompt holds the task, the C contract
+(`harness/vj_learner.h`), weighted statistics of the training images, the accepted rules and its
+feedback. The agent has two tools:
 
-7. **Choose or refine.** Candidates with validation error below 0.5 are
-   eligible. Within an attempt, candidates within 0.005 of the lowest error
-   compete on median per-image time after a warm-up and three measurements of
-   feature extraction and prediction on the same batch. If timing is incomplete
-   for any contender, the lowest error wins. Across attempts, the coordinator
-   keeps the selected candidate with the lowest error. By default it stops
-   refining at error ≤ 0.49, or after three attempts. An eligible candidate
-   below 0.5 may still be accepted if refinement ends without reaching 0.49.
-   If no candidate is below 0.5 and attempts and time remain, the coordinator
-   requests another proposal. It skips configurations already tried in that
-   round; repeated proposals still consume an attempt. If no candidate is
-   eligible when refinement ends, the round is skipped and weights are unchanged.
+- `try_rule(source)`: build the rule; report weighted training error, time, polarity.
+- `submit_rule(source)`: the same, and save it as the submission.
 
-8. **Update the distribution.** For the selected learner, its validation error
-   `e` is clamped to `[1e-6, 1 - 1e-6]` and its ensemble weight is
-   `alpha = 0.5 * log((1 - e) / e)`. Using that learner's predictions on all
-   original images, the coordinator multiplies each weight by
-   `exp(-alpha * label * prediction)` and normalizes the array. It saves the
-   model, alpha, and updated weights before starting the next round.
+A rule is `double weak_score(const vj_image *im)`. The image struct has the pixels, integral
+images, mean and std, and the header has Haar, rectangle, pixel and LBP helpers. The build
+rejects `#include`, `#pragma`, `asm` and `__attribute__`, and any call to a function outside
+`<math.h>` (checked on the compiled object with `nm`, so hand-written declarations of `fopen`,
+`system` or `malloc` fail). A crash, a hang, or a NaN or infinite score fails the candidate,
+never the run.
 
-9. **Use the saved ensemble.** The run's `manifest.jsonl` contains accepted
-   learner specifications, model paths, model hashes, validation errors, and
-   alphas. `predict_ensemble.py` verifies the saved model hashes and combines
-   their hard predictions using the alpha-weighted vote. It expects the same
-   labeled image-folder layout and writes one path and hard label per line.
+Validation images exist only in the coordinator process. The CBCL test set is never loaded.
 
-The default configuration runs 10 rounds, proposes three candidates per
-attempt, and uses a 55-second round deadline. The deadline bounds proposal and
-training workers; preprocessing, coordinator-side prediction, timing, and
-scoring are outside that bound. See `config.py` and `main.py --help` for the
-available settings.
+## Files
 
-## Audit and outputs
+| Path | What it does |
+|---|---|
+| `main.py`, `config.py` | command line and defaults |
+| `coordinator/coordinator.py` | the round and attempt loops, kill at deadline, scoring, weight update, audit |
+| `coordinator/ladder.py` | the error bar: levels, failures per level, carry-over |
+| `coordinator/selection.py` | progress per ns, alpha, error needed to win |
+| `coordinator/brief.py` | the prompt each agent gets |
+| `agents/claude_worker.py` | one Claude session with `try_rule` / `submit_rule` |
+| `agents/haar_worker.py` | brute-force Haar search (baseline, fallback, LLM-free tests) |
+| `agents/scripted_worker.py` | fake agents for tests (hang, crash, forbidden call, ...) |
+| `agents/prompts/andrew.md` | Andrew's agent strategy (each student writes their own) |
+| `harness/vj_learner.h`, `harness/runner.c` | the C contract and the scoring/timing program |
+| `harness/build.py`, `harness/threshold.py` | source checks, compile, run, time; exact weighted threshold fit |
+| `ensemble.py`, `cascade.py`, `predict.py` | reload a run, slice the cascade, write scores for `eval/` |
+| `eval/` | shared evaluator: detection and precision at fixed FP rates (C, tested) |
 
-Each run needs a new output directory. It contains `audit.jsonl` with decisions,
-requests, statuses, validation errors, robustness checks, selections, and
-weight-update records. Each `round_XXX/` contains candidate model files and
-the input and, for accepted rounds, output weight arrays. `manifest.jsonl`
-contains only accepted learners. The `runs/` directory is ignored by Git.
+A run folder holds `audit.jsonl` (every event), `manifest.jsonl` (accepted rules with source hash,
+threshold, polarity, alpha, ns), `learners/round_XXX.c`, per-attempt agent folders (prompt,
+transcript, submission, tool reports) and `summary.json`.
 
-The ChatGPT plan adapter stores credentials and its local 50-attempt-per-five-
-hour limit in a Docker-managed volume outside the repository. Failed calls count
-toward that cap. Plan eligibility and limits are determined by OpenAI; API-key
-access is separately billed. Never commit credentials.
+## Known limits
 
-## Interpretation and limitations
-
-The changing validation subsets select individual learners; they are not an
-independent evaluation of the finished ensemble. The original `train/` and
-`validate/` folders are combined by this prototype, so a separate untouched
-test dataset is needed to estimate generalization. Using validation-subset
-error for alpha while updating all images is an experimental variation and
-does not establish the standard AdaBoost training-distribution guarantee.
-
-The current output is an alpha-weighted ensemble, not a staged cascade. It
-does not automatically evaluate the finished ensemble on an independent test
-set. The LLM can choose only among the implemented models and features.
+- The split is the team's folder split: 5,931 training and 1,046 validation images. Validation
+  error picks rules and sets alpha, and the cascade is calibrated on it too, so validation numbers
+  are optimistic. Only the test set gives real numbers.
+- Agents see aggregate validation errors in their feedback, so many attempts can slowly fit validation.
+- Timing runs on the machine doing the run. Compare runs from one machine only.
+- With the 1 ns floor, a few Haar features are "free", so an agent can pack several into one rule.
+  The floor value decides how many.
+- Each rule votes +1 or −1, so early cascade cuts see only a few distinct running scores and can
+  reject little without losing many faces. The cascade pays off once the chain is long.
+- Process-group kill is POSIX only (macOS, Linux, or WSL on Windows).

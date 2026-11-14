@@ -1,35 +1,33 @@
 import datetime
 import json
-import threading
+import math
+
+
+def _clean(value):
+    """Make a value JSON-safe: numpy scalars to Python, non-finite floats to strings."""
+    if hasattr(value, "item") and not isinstance(value, (list, dict)):
+        try:
+            value = value.item()
+        except (ValueError, AttributeError):
+            pass
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _clean(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_clean(v) for v in value]
+    return value
 
 
 class AuditLog:
-    """Append JSON messages from concurrent threads in a single process."""
+    """Append-only JSONL log. One record per event, written by the coordinator process only."""
+
     def __init__(self, path):
         self.path = path
-        self._lock = threading.Lock()
 
-    def emit(self, message):
-        record = {"schema_version": 1,
+    def emit(self, type_, **fields):
+        record = {"schema_version": 2,
                   "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                  **message}
-        with self._lock, open(self.path, "a", encoding="utf-8") as stream:
-            stream.write(json.dumps(record, allow_nan=False) + "\n")
-
-    def summary(self, limit=18):
-        """Return bounded aggregate records, excluding raw outputs and secrets."""
-        try:
-            with self._lock, open(self.path, encoding="utf-8") as stream:
-                records = [json.loads(line) for line in stream]
-        except FileNotFoundError:
-            return []
-        allowed = {"CoordinatorDecision": ("source", "actions"),
-                   "TrainResult": ("learner_id", "status", "elapsed_s"),
-                   "EvaluateResult": ("learner_id", "eval_target", "metrics"),
-                   "ValidationRobustness": ("learner_id", "weighted_validation_error"),
-                   "CandidateSelection": ("learner_id", "validation_error", "predict_s"),
-                   "RoundSkipped": ("round", "reason"),
-                   "RefinementStopped": ("round", "reason")}
-        selected = [r for r in records if r.get("type") in allowed][-limit:]
-        return [{"type": r["type"], **{k: r[k] for k in allowed[r["type"]] if k in r}}
-                for r in selected]
+                  "type": type_, **_clean(fields)}
+        with open(self.path, "a", encoding="utf-8") as stream:
+            stream.write(json.dumps(record, allow_nan=False, default=str) + "\n")
