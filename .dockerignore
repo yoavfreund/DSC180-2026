@@ -1,0 +1,9 @@
+.git
+.venv
+.claude
+runs
+train
+validate
+**/__pycache__
+eval/eval
+.env

@@ -70,9 +70,9 @@ def _audit(run_dir, kind):
 
 
 def _group_gone(run_dir):
-    """True if no worker started by the run is still alive."""
+    """True if no worker started by THIS run is still alive (other runs may be going)."""
     out = os.popen("ps -axo command").read()
-    return "scripted_worker" not in out and "haar_worker" not in out
+    return str(run_dir) not in out
 
 
 def test_coordinator_accepts_good_rule_kills_hung_agent_rejects_unsafe(synthetic_dataset, tmp_path):
@@ -160,3 +160,115 @@ def test_marginal_ns_charges_expensive_rules_and_not_cheap_ones(images_file, tmp
     assert c_ns < 3.0                 # a Haar feature is close to free over the call overhead
     assert l_ns > 20 * max(c_ns, 1.0)  # 361 square roots are not
     assert c_raw >= c_ns and l_raw >= l_ns
+
+
+def test_memory_records_outcomes_across_attempts_and_rounds(synthetic_dataset, tmp_path):
+    cfg = Config(rounds=2, agents=[AgentSpec("good", "scripted", mode="good"),
+                                   AgentSpec("bad", "scripted", mode="forbidden")],
+                 deadline_s=1, ladder=[0.30, 0.49], fails_per_level=1, fallback=False)
+    coord = Coordinator(cfg, synthetic_dataset, tmp_path / "run", tmp_path / "work", echo=lambda *_: None)
+    coord.run()
+    good, bad = coord.memory["good"], coord.memory["bad"]
+    assert good[0]["outcome"].startswith("ACCEPTED at bar 0.300") and good[0]["source"]
+    assert all(not e["pending"] for e in good + bad)
+    assert all(e["outcome"].startswith("rejected: calls functions that are not allowed") for e in bad)
+    assert len(coord.accepted_code) == len(coord.ensemble) >= 1
+
+
+def _write_pgms(folder, n, value):
+    folder.mkdir(parents=True, exist_ok=True)
+    for i in range(n):
+        (folder / f"{i:03d}.pgm").write_bytes(b"P5\n19 19\n255\n" + bytes([value]) * 361)
+
+
+def test_audit_split_is_stratified_disjoint_and_never_weighted(tmp_path, synthetic_dataset):
+    from common.data import load_dataset
+    _write_pgms(tmp_path / "train" / "face", 10, 200)
+    _write_pgms(tmp_path / "train" / "non-face", 20, 50)
+    _write_pgms(tmp_path / "validate" / "face", 5, 200)
+    _write_pgms(tmp_path / "validate" / "non-face", 5, 50)
+    d = load_dataset(tmp_path, audit_frac=0.2)
+    assert len(d.audit_idx) == 6 and int((d.y[d.audit_idx] > 0).sum()) == 2
+    assert not set(d.audit_idx) & set(d.train_idx) and not set(d.audit_idx) & set(d.val_idx)
+    assert len(d.train_idx) + len(d.audit_idx) == 30
+
+    # In a run, audit images keep weight 0 and are reported separately.
+    sd = synthetic_dataset
+    sd.audit_idx, sd.train_idx = sd.train_idx[::5], np.setdiff1d(sd.train_idx, sd.train_idx[::5])
+    cfg = Config(rounds=1, agents=[AgentSpec("good", "scripted", mode="good")], deadline_s=1)
+    run = tmp_path / "run"
+    Coordinator(cfg, sd, run, tmp_path / "work", echo=lambda *_: None).run()
+    w = np.load(run / "round_000" / "weights_out.npy")
+    assert np.all(w[sd.audit_idx] == 0) and w.sum() == pytest.approx(1.0)
+    assert "audit_auc" in _audit(run, "RoundAccepted")[0]
+
+
+def test_weight_cap_bounds_every_weight():
+    from coordinator.coordinator import _cap_weights, _ess
+    rng = np.random.default_rng(0)
+    w = rng.exponential(size=1000) ** 6
+    w /= w.sum()
+    capped = _cap_weights(w, 20 / 1000)
+    assert capped.max() <= 20 / 1000 * (1 + 1e-6) and capped.sum() == pytest.approx(1.0)
+    assert np.all(np.argsort(capped[w < np.quantile(w, 0.5)]) == np.argsort(w[w < np.quantile(w, 0.5)]))
+    assert _ess(capped) > _ess(w)
+
+
+def test_confidence_margin_blocks_a_rule_that_passes_without_it(synthetic_dataset, tmp_path):
+    for confidence, accepted_at_first_try in ((0.0, True), (100.0, False)):
+        cfg = Config(rounds=1, agents=[AgentSpec("good", "scripted", mode="good")], deadline_s=1,
+                     ladder=[0.30, 0.49], fails_per_level=1, fallback=False, confidence=confidence)
+        run = tmp_path / f"run-{confidence}"
+        Coordinator(cfg, synthetic_dataset, run, tmp_path / "work", echo=lambda *_: None).run()
+        assert (not _audit(run, "AttemptFailed")) == accepted_at_first_try
+
+
+def test_haar_search_runs_once_per_round(synthetic_dataset, tmp_path):
+    cfg = Config(rounds=1, agents=[AgentSpec("base", "haar")], deadline_s=60,
+                 ladder=[0.30, 0.49], fails_per_level=2, fallback=False, confidence=100.0)
+    run = tmp_path / "run"
+    Coordinator(cfg, synthetic_dataset, run, tmp_path / "work", echo=lambda *_: None).run()
+    results = _audit(run, "AgentResult")
+    assert len(results) == 4 and results[0]["status"] == "scored" and not results[0].get("reused")
+    assert all(r["status"] == "duplicate" and r["reused"] for r in results[1:])
+
+
+def test_run_stops_when_rounds_keep_getting_skipped(synthetic_dataset, tmp_path):
+    cfg = Config(rounds=10, agents=[AgentSpec("hang", "scripted", mode="hang")], deadline_s=0.3,
+                 ladder=[0.49], fails_per_level=1, fallback=False)
+    summary = Coordinator(cfg, synthetic_dataset, tmp_path / "run", tmp_path / "work", echo=lambda *_: None).run()
+    assert summary["stop_reason"].startswith("stalled: 2 rounds")
+    assert len(_audit(tmp_path / "run", "RoundSkipped")) == 2
+
+
+
+def test_copies_stay_on_the_training_side(tmp_path):
+    from common.data import load_dataset
+    _write_pgms(tmp_path / "train" / "face", 10, 200)
+    _write_pgms(tmp_path / "train" / "non-face", 20, 50)
+    _write_pgms(tmp_path / "validate" / "face", 5, 200)
+    _write_pgms(tmp_path / "validate" / "non-face", 5, 50)
+    d = load_dataset(tmp_path, audit_frac=0.2, augment_kinds=("flip", "shift"))
+    originals = 30 - len(d.audit_idx)                      # 24 training originals outside the audit share
+    copies = [i for i in d.train_idx if d.variant[i]]
+    assert len(copies) == originals * 5                    # 1 flip + 4 shifts of each
+    assert all(not d.variant[i] for i in np.concatenate([d.val_idx, d.audit_idx]))
+    audit_names = {d.ids[i] for i in d.audit_idx}
+    assert not any(d.ids[i].split("#")[0] in audit_names for i in copies)
+
+
+def test_balanced_init_and_search_sample(synthetic_dataset, tmp_path):
+    from agents.common import SEARCH_ROWS, TrainData, write_private
+    cfg = Config(rounds=1, agents=[AgentSpec("good", "scripted", mode="good")], deadline_s=1, balanced_init=True)
+    coord = Coordinator(cfg, synthetic_dataset, tmp_path / "run", tmp_path / "work", echo=lambda *_: None)
+    d, w = synthetic_dataset, coord.w
+    for split in (d.train_idx, d.val_idx):
+        assert w[split][d.y[split] > 0].sum() == pytest.approx(w[split][d.y[split] < 0].sum())
+    big = np.repeat(d.images[:400], 25, axis=0)              # 10000 rows > SEARCH_ROWS
+    yy = np.repeat(d.y[:400], 25)
+    ww = np.ones(len(yy)); ww[yy > 0] = 0                    # all weight on non-faces
+    write_private(tmp_path / "p", big, yy, ww)
+    s = TrainData.load(tmp_path / "p", search=True)
+    assert s.sampled and s.n == SEARCH_ROWS and np.all(s.y < 0) and np.allclose(s.w, 1 / SEARCH_ROWS)
+    write_private(tmp_path / "q", d.images[:100], d.y[:100], np.ones(100))
+    assert not TrainData.load(tmp_path / "q", search=True).sampled

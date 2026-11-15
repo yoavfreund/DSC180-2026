@@ -20,6 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
+import harness.build as hb
 from harness.build import build_learner, run_scores, write_images
 from harness.threshold import Stump
 
@@ -35,6 +36,8 @@ def load_manifest(run_dir):
 def learner_outputs(run_dir, images):
     """h_t(x) in {-1, +1} for every accepted rule t and image x: shape (T, n)."""
     run_dir = Path(run_dir)
+    if (run_dir / "harness" / "runner.c").exists():
+        hb.use_harness(run_dir / "harness")       # rebuild exactly as the run built
     entries = load_manifest(run_dir)
     images_path = run_dir / "build" / f"images-{len(images)}-{hashlib.sha256(images.tobytes()).hexdigest()[:12]}.bin"
     images_path.parent.mkdir(parents=True, exist_ok=True)

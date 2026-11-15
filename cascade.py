@@ -10,6 +10,7 @@ gives the real numbers.
 """
 import argparse
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -24,7 +25,7 @@ FP_RATES = (0.001, 0.01, 0.1)
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--run-dir", required=True)
-    ap.add_argument("--data", default=".", help="folder that holds validate/")
+    ap.add_argument("--data", default=os.environ.get("FACE_DATA", "."), help="folder that holds validate/")
     ap.add_argument("--face-loss", type=float, default=0.01, help="total share of validation faces the cuts may reject")
     ap.add_argument("--cuts", help="comma-separated rule counts, e.g. 1,2,4,8 (default: powers of 2 below T)")
     args = ap.parse_args()

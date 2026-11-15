@@ -19,6 +19,7 @@ from harness.threshold import fit_stump
 
 
 TIMING_IMAGES = 256   # small enough to stay in cache; see harness.build.marginal_ns
+SEARCH_ROWS = 8000    # the Haar search and scan run on a weighted sample of this many rows
 
 
 @dataclass
@@ -30,28 +31,51 @@ class TrainData:
     y: np.ndarray
     w: np.ndarray
     images: np.ndarray | None = None
+    sampled: bool = False  # True: rows drawn in proportion to weight, so w is uniform
 
     @classmethod
-    def load(cls, private_dir, with_images=False):
+    def load(cls, private_dir, with_images=False, search=False):
+        """search=True loads the search sample: all training rows when there are few, else
+        SEARCH_ROWS rows drawn with replacement in proportion to their weight (equal weights)."""
         d = Path(private_dir)
-        y = np.load(d / "train_labels.npy")
+        prefix = "search" if search else "train"
+        y = np.load(d / f"{prefix}_labels.npy")
         images = None
         if with_images:
-            images = np.fromfile(d / "train_images.bin", dtype=np.uint8).reshape(-1, 19, 19)
+            images = np.fromfile(d / f"{prefix}_images.bin", dtype=np.uint8).reshape(-1, 19, 19)
         n_timing = (d / "timing_images.bin").stat().st_size // 361
-        return cls(d / "train_images.bin", d / "timing_images.bin", len(y), n_timing, y,
-                   np.load(d / "train_weights.npy"), images)
+        meta = json.loads((d / "search.json").read_text()) if search else {}
+        return cls(d / f"{prefix}_images.bin", d / "timing_images.bin", len(y), n_timing, y,
+                   np.load(d / f"{prefix}_weights.npy"), images, bool(meta.get("sampled")))
 
 
-def write_private(private_dir, images, y, w, seed=0):
+def write_private(private_dir, images, y, w, seed=0, shared_images=None):
+    """shared_images: a file that already holds exactly these images (written once per run);
+    it is linked instead of copied, because only the weights change between rounds."""
     d = Path(private_dir)
     d.mkdir(parents=True, exist_ok=True)
     images = np.ascontiguousarray(images, dtype=np.uint8)
-    images.tofile(d / "train_images.bin")
-    pick = np.random.default_rng(seed).permutation(len(images))[:TIMING_IMAGES]
+    y = np.asarray(y, dtype=np.int8)
+    w = np.asarray(w, dtype=np.float64) / np.sum(w)
+    if shared_images is not None and Path(shared_images).stat().st_size == images.nbytes:
+        (d / "train_images.bin").symlink_to(Path(shared_images).resolve())
+    else:
+        images.tofile(d / "train_images.bin")
+    rng = np.random.default_rng(seed)
+    pick = rng.permutation(len(images))[:TIMING_IMAGES]
     images[np.sort(pick)].tofile(d / "timing_images.bin")
-    np.save(d / "train_labels.npy", np.asarray(y, dtype=np.int8))
-    np.save(d / "train_weights.npy", np.asarray(w, dtype=np.float64) / np.sum(w))
+    np.save(d / "train_labels.npy", y)
+    np.save(d / "train_weights.npy", w)
+    # Search sample: boosting by resampling keeps the searches fast on large (augmented) sets.
+    if len(images) > SEARCH_ROWS:
+        rows = np.sort(rng.choice(len(images), size=SEARCH_ROWS, replace=True, p=w))
+        s_img, s_y, s_w, sampled = images[rows], y[rows], np.full(SEARCH_ROWS, 1.0 / SEARCH_ROWS), True
+    else:
+        s_img, s_y, s_w, sampled = images, y, w, False
+    s_img.tofile(d / "search_images.bin")
+    np.save(d / "search_labels.npy", s_y)
+    np.save(d / "search_weights.npy", s_w)
+    (d / "search.json").write_text(json.dumps({"rows": len(s_y), "sampled": sampled}))
 
 
 def write_submission(out_dir, source):

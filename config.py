@@ -35,7 +35,11 @@ class Config:
     timing_rounds: int = 3
     timing_reps: int = 7
     fallback: bool = True             # brute-force Haar search when the ladder is exhausted
+    confidence: float = 0.0           # pass only if val_err + confidence * standard error < bar (0 = plain)
+    weight_cap: float | None = None   # cap each weight at weight_cap / n after each update (None = AdaBoost)
+    balanced_init: bool = False       # start with half the weight on faces, half on non-faces
     max_llm_sessions: int = 300       # stop the run before starting more LLM agent sessions than this
+    max_skips_in_a_row: int = 2       # stop the run: a skipped round leaves the weights, so it repeats
     model: str = "claude-sonnet-5-5"
     effort: str = "low"
     max_turns: int = 8
@@ -45,6 +49,8 @@ class Config:
         validate_levels(self.ladder)
         if self.rounds < 1 or self.fails_per_level < 1 or self.max_turns < 1:
             raise ValueError("rounds, fails_per_level and max_turns must be positive")
+        if self.confidence < 0 or (self.weight_cap is not None and self.weight_cap <= 1):
+            raise ValueError("confidence must be >= 0 and weight_cap > 1")
         if not self.deadline_s > 0 or self.ns_floor <= 0:
             raise ValueError("deadline and ns_floor must be positive")
         if not self.agents:

@@ -25,9 +25,33 @@ from pathlib import Path
 
 import numpy as np
 
-HARNESS = Path(__file__).resolve().parent
+# A run builds from its own snapshot of the harness (FACE_HARNESS_DIR), so editing the
+# repository while a run is going cannot change that run. See use_harness().
+HARNESS = Path(os.environ.get("FACE_HARNESS_DIR") or Path(__file__).resolve().parent)
 HEADER = HARNESS / "vj_learner.h"
+SCAN_HEADER = HARNESS / "vj_scan.h"
+MAX_SCAN = 1000         # parameter combinations per scan
 RUNNER_C = HARNESS / "runner.c"
+HARNESS_FILES = ("vj_learner.h", "vj_scan.h", "runner.c")
+
+
+def use_harness(directory):
+    """Build from an existing harness snapshot (for example a finished run's harness/ folder)."""
+    global HARNESS, HEADER, SCAN_HEADER, RUNNER_C
+    d = Path(directory)
+    HARNESS, HEADER, SCAN_HEADER, RUNNER_C = d, d / "vj_learner.h", d / "vj_scan.h", d / "runner.c"
+
+
+def snapshot_harness(dest):
+    """Copy the harness sources to dest and build from there in this process. Returns dest."""
+    global HARNESS, HEADER, SCAN_HEADER, RUNNER_C
+    dest = Path(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    src = Path(__file__).resolve().parent
+    for name in HARNESS_FILES:
+        (dest / name).write_bytes((src / name).read_bytes())
+    HARNESS, HEADER, SCAN_HEADER, RUNNER_C = dest, dest / "vj_learner.h", dest / "vj_scan.h", dest / "runner.c"
+    return dest
 CC = os.environ.get("CC", "cc")
 CFLAGS = ["-std=c11", "-O2", "-Wall", "-Wextra", "-Wno-unused-parameter",
           "-Werror=implicit-function-declaration", "-Werror=return-type"]
@@ -105,7 +129,8 @@ def runner_object(cache_dir):
     """Compile runner.c once per cache directory (atomic, safe for parallel workers)."""
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha256(RUNNER_C.read_bytes() + HEADER.read_bytes() + CC.encode()).hexdigest()[:16]
+    key = hashlib.sha256(RUNNER_C.read_bytes() + HEADER.read_bytes() + SCAN_HEADER.read_bytes()
+                         + CC.encode()).hexdigest()[:16]
     obj = cache_dir / f"runner-{key}.o"
     if obj.exists():
         return obj
@@ -122,6 +147,17 @@ def runner_object(cache_dir):
 
 def build_learner(source, build_dir, cache_dir):
     """Check, compile and link one weak rule. Raises LearnerError with an agent-readable reason."""
+    return _build(source, build_dir, cache_dir, template=False)
+
+
+def build_template(source, build_dir, cache_dir):
+    """Like build_learner, but P0..P3 (vj_scan.h) are allowed. Only for scan; never submitted."""
+    if not re.search(r"\bP[0-3]\b", source):
+        raise LearnerError("a scan template must use at least one of P0, P1, P2, P3")
+    return _build(source, build_dir, cache_dir, template=True)
+
+
+def _build(source, build_dir, cache_dir, template):
     problems = check_source(source)
     if problems:
         raise LearnerError("source rejected: " + "; ".join(problems))
@@ -131,15 +167,20 @@ def build_learner(source, build_dir, cache_dir):
     src.write_text(source, encoding="utf-8")
     obj = build_dir / "learner.o"
     binary = build_dir / "learner"
+    includes = ["-include", str(HEADER)] + (["-include", str(SCAN_HEADER)] if template else [])
     try:
-        out = subprocess.run([CC, *CFLAGS, "-include", str(HEADER), "-c", str(src), "-o", str(obj)],
+        out = subprocess.run([CC, *CFLAGS, *includes, "-c", str(src), "-o", str(obj)],
                              capture_output=True, text=True, timeout=COMPILE_TIMEOUT_S)
     except subprocess.TimeoutExpired:
         raise LearnerError(f"compiling took longer than {COMPILE_TIMEOUT_S} s") from None
     if out.returncode != 0:
-        raise LearnerError("compile error:\n" + _clip(out.stderr.replace(str(build_dir) + "/", "")))
+        msg = out.stderr.replace(str(build_dir) + "/", "")
+        if not template and re.search(r"\bP[0-3]\b", source):
+            msg = "P0..P3 exist only in scan templates; submit concrete numbers.\n" + msg
+        raise LearnerError("compile error:\n" + _clip(msg))
     warnings = _clip(out.stderr.replace(str(build_dir) + "/", ""))
-    bad = sorted(_undefined_symbols(obj) - ALLOWED_UNDEFINED)
+    allowed = ALLOWED_UNDEFINED | ({"vj_p"} if template else set())
+    bad = sorted(_undefined_symbols(obj) - allowed)
     if bad:
         raise LearnerError("calls functions that are not allowed: " + ", ".join(bad)
                            + ". Only <math.h> functions may be called.")
@@ -148,6 +189,57 @@ def build_learner(source, build_dir, cache_dir):
     if out.returncode != 0:
         raise LearnerError("link error (is weak_score defined exactly once, and no main?):\n" + _clip(out.stderr))
     return Build(binary, hashlib.sha256(source.encode("utf-8")).hexdigest(), warnings)
+
+
+def expand_ranges(ranges):
+    """{"P0": [lo, hi] or [lo, hi, step], ...} -> list of (p0, p1, p2, p3). Unnamed parameters are 0."""
+    if not isinstance(ranges, dict) or not ranges:
+        raise LearnerError('ranges must look like {"P0": [0, 15], "P1": [2, 8, 2]}')
+    axes = []
+    for k in ("P0", "P1", "P2", "P3"):
+        r = ranges.get(k)
+        if r is None:
+            axes.append([0])
+            continue
+        if not isinstance(r, (list, tuple)) or len(r) not in (2, 3) or not all(isinstance(v, int) for v in r):
+            raise LearnerError(f"{k} must be [lo, hi] or [lo, hi, step] with integers")
+        lo, hi, step = r[0], r[1], (r[2] if len(r) == 3 else 1)
+        if step < 1 or hi < lo or hi - lo > 40:
+            raise LearnerError(f"{k}: need lo <= hi, hi - lo <= 40 and step >= 1")
+        axes.append(list(range(lo, hi + 1, step)))
+    unknown = set(ranges) - {"P0", "P1", "P2", "P3"}
+    if unknown:
+        raise LearnerError("unknown parameters: " + ", ".join(sorted(unknown)))
+    total = 1
+    for a in axes:
+        total *= len(a)
+    if total > MAX_SCAN:
+        raise LearnerError(f"{total} combinations; the limit is {MAX_SCAN}. Use a step or a smaller range.")
+    return [(a, b, c, d) for a in axes[0] for b in axes[1] for c in axes[2] for d in axes[3]]
+
+
+def run_scan(binary, images_path, n, combos, timeout_s=30):
+    """Scores (len(combos), n) for a template binary."""
+    params = Path(binary).parent / "params.txt"
+    params.write_text("".join(f"{a} {b} {c} {d}\n" for a, b, c, d in combos))
+    try:
+        proc = subprocess.run([str(binary), "scan", str(images_path), str(n), str(params)],
+                              capture_output=True, text=True, timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        raise LearnerError(f"the scan took longer than {timeout_s} s; use fewer combinations") from None
+    if proc.returncode != 0:
+        raise LearnerError(f"the template crashed during the scan (exit code {proc.returncode})")
+    out = Path(str(params) + ".out")
+    scores = np.fromfile(out, dtype=np.float64)
+    out.unlink()
+    if scores.size != len(combos) * n:
+        raise LearnerError("the scan wrote the wrong number of scores")
+    return scores.reshape(len(combos), n)
+
+
+def substitute(source, values):
+    """Replace P0..P3 with concrete integers, giving a rule that can be submitted."""
+    return re.sub(r"\bP([0-3])\b", lambda m: str(values[int(m.group(1))]), source)
 
 
 def write_images(images, path):

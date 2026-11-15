@@ -17,3 +17,6 @@ learner/test_features.exe
 eval/eval
 harness/tests/*/train
 harness/tests/*/predict
+
+# Claude sign-in token for Docker (never commit)
+.env

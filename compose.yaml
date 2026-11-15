@@ -1,0 +1,11 @@
+# docker compose run --rm boost python main.py --run-name haar-01 --agent base=haar
+services:
+  boost:
+    build: .
+    image: face-agents
+    volumes:
+      - ./train:/data/train:ro          # training images (agents see these through the coordinator)
+      - ./validate:/data/validate:ro    # hidden validation images
+      - ./runs:/app/runs                # run outputs stay on the host
+    environment:
+      - CLAUDE_CODE_OAUTH_TOKEN         # from `claude setup-token`; needed only for claude agents

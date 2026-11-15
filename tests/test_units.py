@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from common.metrics import auc, detection_at_fp
-from coordinator.brief import brief, data_summary, describe, history_text
+from coordinator.brief import brief, describe, history_text, preview
 from coordinator.ladder import Ladder, flat_ladder, parse_ladder
 from coordinator.selection import alpha, choose, progress, progress_per_ns, required_error
 from ensemble import apply_cascade, calibrate, default_cuts, mean_ns_per_image, running_scores
@@ -163,10 +163,61 @@ def test_brief_contains_contract_bar_and_feedback():
     rng = np.random.default_rng(0)
     images = rng.integers(0, 256, (50, 19, 19), dtype=np.uint8)
     y = np.where(np.arange(50) < 20, 1, -1)
-    summary = data_summary(images, y, rng.random(50))
-    text = brief(round_t=2, rounds=10, attempt=1, bar=0.33, deadline_s=40, summary=summary,
+    view, shown = preview(images, y, rng.random(50), rng)
+    text = brief(round_t=2, rounds=10, attempt=1, bar=0.33, deadline_s=40, preview=view,
                  history=history_text([]), feedback="Your result: X")
     assert "double weak_score(const vj_image *im);" in text
     assert "0.330" in text and "Round 3 of 10, attempt 2" in text and "Your result: X" in text
     assert describe("/* rule: eyes */ double weak_score(...)") == "rule: eyes"
     assert describe("double f;") == "(no description comment)"
+
+
+def test_memory_and_history_show_code_and_outcomes():
+    from coordinator.brief import memory_text
+    entries = [{"round": 0, "attempt": 0, "outcome": "missed the bar 0.300", "val_err": 0.31, "ns": 1.2,
+                "source": "/* rule: eye band */\ndouble weak_score(const vj_image *im) {\n  return 1;\n}"},
+               {"round": 1, "attempt": 0, "outcome": "stopped at the deadline with no submission",
+                "val_err": None, "ns": None, "source": None}]
+    text = memory_text(entries)
+    assert "round 1, attempt 1: missed the bar 0.300 (validation error 0.310" in text
+    assert "`/* rule: eye band */ double weak_score(const vj_image *im) { return 1; }`" in text
+    assert "round 2, attempt 1: stopped at the deadline" in text
+    ens = [{"round": 0, "agent": "base", "val_err": 0.14, "alpha": 0.9, "ns": 0.1, "description": "d"}]
+    hist = history_text(ens, ["double weak_score(const vj_image *im) { return 2; }"])
+    assert "1 | base |" in hist and "- round 1: `double weak_score" in hist
+
+
+def test_preview_draws_four_of_each_class_by_weight_and_hides_the_rest():
+    rng = np.random.default_rng(0)
+    images = rng.integers(0, 256, (200, 19, 19), dtype=np.uint8)
+    y = np.where(np.arange(200) < 60, 1, -1)
+    w = np.zeros(200)
+    w[[1, 2, 3, 4, 5]] = 1.0                   # only 5 faces and 5 non-faces can be drawn
+    w[[100, 101, 102, 103, 104]] = 1.0
+    correct = np.arange(200) % 2 == 0
+    text, shown = preview(images, y, w, np.random.default_rng(1), correct, np.full(200, "", dtype=object))
+    assert len(shown) == 8 and sum(y[i] > 0 for i in shown) == 4
+    assert set(shown) <= {1, 2, 3, 4, 5, 100, 101, 102, 103, 104}
+    assert "gets it WRONG" in text and "gets it RIGHT" in text and "x average" in text
+    _, again = preview(images, y, w, np.random.default_rng(1), correct)
+    _, other = preview(images, y, w, np.random.default_rng(2), correct)
+    assert again == shown and other != shown   # reproducible per seed, new draw per attempt
+    text0, _ = preview(images, y, w, np.random.default_rng(1))
+    assert "no rules yet" in text0 and "minus" not in text0   # no averaged difference map any more
+
+
+def test_augment_keeps_labels_and_makes_nine_copies():
+    from common.data import augment
+    rng = np.random.default_rng(0)
+    images = rng.integers(0, 256, (6, 19, 19), dtype=np.uint8)
+    y = np.array([1, 1, -1, -1, -1, 1], dtype=np.int8)
+    ax, ay, src, names = augment(images, y, ("flip", "rotate", "zoom", "shift"))
+    assert len(ax) == 6 * 9
+    assert np.array_equal(ay, y[src])
+    flip = ax[list(names).index("flip")]
+    assert np.array_equal(flip, images[0][:, ::-1])
+    right = ax[list(names).index("shift+x")]
+    assert np.array_equal(right[:, 1:], images[0][:, :-1])   # content moved one pixel right
+    for removed in ("invert", "blur"):
+        with pytest.raises(ValueError):
+            augment(images, y, (removed,))

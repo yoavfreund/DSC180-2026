@@ -112,7 +112,7 @@ def main():
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     t0 = time.monotonic()
-    data = TrainData.load(args.private, with_images=True)
+    data = TrainData.load(args.private, with_images=True, search=True)   # weighted sample if large
     err, meta = search(data.images, data.y, data.w)
     if meta is None:
         write_result(args.out, status="error", error="no feature found")

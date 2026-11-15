@@ -12,7 +12,7 @@ into a cascade.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest -q tests            # 53 tests, no LLM
+.venv/bin/python -m pytest -q tests            # 67 tests, no LLM
 eval/tests/run_tests.sh                        # shared C evaluator tests
 
 # Baseline with no LLM: brute-force Haar search is the only agent.
@@ -28,6 +28,27 @@ eval/tests/run_tests.sh                        # shared C evaluator tests
 .venv/bin/python predict.py --run-dir runs/mix-01 --images validate --scores s.txt --key k.txt --cascade
 eval/eval s.txt k.txt --fp-rates 0.001,0.01,0.1
 ```
+
+## Docker (recommended for Windows, works everywhere)
+
+The image has Python 3.12, gcc and binutils. `compose.yaml` mounts `train/` and `validate/`
+read-only and `runs/` read-write.
+
+```bash
+docker compose build
+docker compose run --rm boost                                    # the tests
+docker compose run --rm boost python main.py --run-name haar-01 --agent base=haar
+```
+
+Claude agents need your subscription sign-in inside the container:
+
+1. On the host, run `claude setup-token` and copy the token it prints.
+2. Put it in a file named `.env` next to `compose.yaml`: `CLAUDE_CODE_OAUTH_TOKEN=...`
+   (`.env` is in `.gitignore` and `.dockerignore`; never commit it).
+3. `docker compose run --rm boost python main.py --run-name mix-01 --agent andrew=claude:agents/prompts/andrew.md --agent base=haar`
+
+Timing inside Docker on macOS and Windows runs in a Linux virtual machine. Compare ns values
+within one run only.
 
 ## One round
 
@@ -48,19 +69,62 @@ eval/eval s.txt k.txt --fp-rates 0.001,0.01,0.1
    steps first). When the top level is exhausted, a brute-force Haar search runs as a fallback
    (`--no-fallback` skips the round instead).
 
-Agents get written feedback before the next attempt: their own result, and after a round, the
-winner's numbers and the error they would have needed to win at their speed.
+The Haar search is deterministic, so it runs once per round; later attempts reuse its result.
+Each run copies the harness C files into `runs/NAME/harness/` and builds only from that copy, so
+editing the repository during a run cannot change it.
+
+### Options for noisy late rounds (off by default)
+
+AdaBoost moves the weight onto a few hard images. In a 20-round test the validation set's
+effective size fell from 1,046 to about 60 images by round 6, so a weighted error had a standard
+error near 0.06, twice the ladder step. Three options address this:
+
+| Flag | What it does |
+|---|---|
+| `--audit-frac 0.2` | holds out 20% of `train/` from everything (no weight, no agent, no decision) and reports the ensemble's AUC and detection on it each round: an honest yardstick |
+| `--confidence 1` | a rule passes only if validation error + 1 standard error < bar, so a lucky draw on few images does not pass |
+| `--weight-cap 10` | caps every weight at 10 × the average (MadaBoost-style), so the weight cannot collapse onto a few images. Tested best: no stalls, effective validation size stays near 210 |
+
+### Training copies (off by default)
+
+`--augment flip,rotate,zoom,shift` adds 9 copies of every training image: a mirror, ±7° rotations,
+0.9 and 1.1 zoom, and 1-pixel shifts. Copies come only from training images outside the audit share,
+so validation and audit stay original. With `--audit-frac 0.2` the training set grows from 4,745 to
+47,450 images. `--augment` also turns on `--balanced-init` (half the starting weight on faces). When
+the training set is larger than 8,000 rows, the Haar search and `scan` run on a sample of 8,000 rows
+drawn in proportion to weight.
+
+30-round Haar-only tests (weight cap 10, confidence 1, audit 0.2), scored on the audit set:
+
+| Copies | Training images | Audit AUC | Detection at 1% FP | Detection at 0.1% FP |
+|---|---|---|---|---|
+| none | 4,745 | 0.9989 | 0.976 | 0.896 |
+| flip | 9,490 | 0.9975 | 0.966 | 0.831 |
+| flip, rotate, zoom, shift | 47,450 | **0.9993** | **0.983** | 0.896 |
+| all four + invert (removed) | 78,380 | 0.9945 (stalled at 13 rules) | 0.923 | 0.702 |
+
+An `invert` option (the photographic negative of non-faces) was tried and removed. Inverted
+non-faces never occur in real images, but they took 13% of the weight and were easy to separate,
+so the search picked features that fit them (training error 0.15 on inverted copies, 0.50 on
+validation). One run per setup: a 0.01 difference in detection is about 4 audit faces.
 
 ## What an agent can do
 
 An LLM agent is a Claude Agent SDK session whose system prompt is that agent's `.md`. It has **no
 built-in tools**: it cannot read or write files or run commands. Each session's start message
 records its tool list in the audit. The prompt holds the task, the C contract
-(`harness/vj_learner.h`), weighted statistics of the training images, the accepted rules and its
-feedback. The agent has two tools:
+(`harness/vj_learner.h`), a preview of 8 training images (4 faces and 4 non-faces, drawn in
+proportion to their current weight, a new draw each attempt, with whether the ensemble gets each
+right), the accepted rules with their code, its feedback and its memory. It never sees the whole
+training set; the tools use every training image but return only numbers. The agent has three tools:
 
-- `try_rule(source)`: build the rule; report weighted training error, time, polarity.
-- `submit_rule(source)`: the same, and save it as the submission.
+- `scan(source, ranges)`: the source is a template that uses `P0`..`P3` for integers the agent
+  is unsure of (positions, sizes). The harness tries every combination (at most 1,000) on the
+  weighted training images and returns the 5 best concrete rules. The LLM picks the kind of
+  rule; the search picks the numbers.
+- `try_rules(sources)`: build 1 to 4 concrete rules in one call; report each one's weighted
+  training error, time and polarity. Saves nothing.
+- `submit_rule(source)`: build one concrete rule, report it, and save it as the submission.
 
 A rule is `double weak_score(const vj_image *im)`. The image struct has the pixels, integral
 images, mean and std, and the header has Haar, rectangle, pixel and LBP helpers. The build
@@ -80,11 +144,12 @@ Validation images exist only in the coordinator process. The CBCL test set is ne
 | `coordinator/ladder.py` | the error bar: levels, failures per level, carry-over |
 | `coordinator/selection.py` | progress per ns, alpha, error needed to win |
 | `coordinator/brief.py` | the prompt each agent gets |
-| `agents/claude_worker.py` | one Claude session with `try_rule` / `submit_rule` |
+| `agents/claude_worker.py` | one Claude session with `scan`, `try_rules`, `submit_rule` |
+| `agents/scan.py` | the `scan` tool: every placement of a template, best concrete rules |
 | `agents/haar_worker.py` | brute-force Haar search (baseline, fallback, LLM-free tests) |
 | `agents/scripted_worker.py` | fake agents for tests (hang, crash, forbidden call, ...) |
 | `agents/prompts/andrew.md` | Andrew's agent strategy (each student writes their own) |
-| `harness/vj_learner.h`, `harness/runner.c` | the C contract and the scoring/timing program |
+| `harness/vj_learner.h`, `harness/vj_scan.h`, `harness/runner.c` | the C contract, scan parameters, and the score/time/scan program |
 | `harness/build.py`, `harness/threshold.py` | source checks, compile, run, time; exact weighted threshold fit |
 | `ensemble.py`, `cascade.py`, `predict.py` | reload a run, slice the cascade, write scores for `eval/` |
 | `eval/` | shared evaluator: detection and precision at fixed FP rates (C, tested) |
@@ -100,8 +165,9 @@ transcript, submission, tool reports) and `summary.json`.
   are optimistic. Only the test set gives real numbers.
 - Agents see aggregate validation errors in their feedback, so many attempts can slowly fit validation.
 - Timing runs on the machine doing the run. Compare runs from one machine only.
-- With the 1 ns floor, a few Haar features are "free", so an agent can pack several into one rule.
-  The floor value decides how many.
+- One Haar feature measures about 0.1 ns over an empty rule and counts as 1 ns. A two-feature rule
+  measured about 3 ns, so under progress per ns a combination needs a much lower error to win.
+  Early rounds therefore favor single features.
 - Each rule votes +1 or −1, so early cascade cuts see only a few distinct running scores and can
   reject little without losing many faces. The cascade pays off once the chain is long.
 - Process-group kill is POSIX only (macOS, Linux, or WSL on Windows).

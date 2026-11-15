@@ -4,18 +4,24 @@
  *
  *   runner score IMAGES N OUT    write N doubles (native byte order) to OUT
  *   runner time  IMAGES N REPS   print the median nanoseconds per weak_score() call
+ *   runner scan  IMAGES N PARAMS write K*N doubles to PARAMS.out: one row of N scores
+ *                                for each line "p0 p1 p2 p3" in PARAMS (templates only)
  *
  * IMAGES holds N * 361 bytes, one image after another, row-major (px[y][x]).
  * The vj_image build (integral images, mean, std) is outside the timed loop:
  * in a detector it is shared by every rule.
  */
-#define _POSIX_C_SOURCE 199309L
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
 #include "vj_learner.h"
+
+/* Template parameters for scan mode. A submitted rule cannot use them: the build
+   rejects any reference to vj_p outside a scan template. */
+int vj_p[4];
 
 static void die(const char *msg) {
     fprintf(stderr, "runner: %s\n", msg);
@@ -71,7 +77,7 @@ static int cmp_double(const void *a, const void *b) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 5) die("usage: runner score IMAGES N OUT | runner time IMAGES N REPS");
+    if (argc != 5) die("usage: runner score IMAGES N OUT | time IMAGES N REPS | scan IMAGES N PARAMS");
     long n = strtol(argv[3], NULL, 10);
     vj_image *ims = load(argv[2], n);
 
@@ -107,6 +113,23 @@ int main(int argc, char **argv) {
         printf("%.4f\n", per[reps / 2]);
         return 0;
     }
-    die("first argument must be score or time");
+    if (strcmp(argv[1], "scan") == 0) {
+        FILE *pf = fopen(argv[4], "r");
+        if (!pf) die("cannot open PARAMS");
+        char out_path[4096];
+        snprintf(out_path, sizeof out_path, "%s.out", argv[4]);
+        FILE *of = fopen(out_path, "wb");
+        if (!of) die("cannot write PARAMS.out");
+        double *row = malloc((size_t)n * sizeof(double));
+        if (!row) die("out of memory");
+        while (fscanf(pf, "%d %d %d %d", &vj_p[0], &vj_p[1], &vj_p[2], &vj_p[3]) == 4) {
+            for (long i = 0; i < n; i++) row[i] = weak_score(&ims[i]);
+            if (fwrite(row, sizeof(double), (size_t)n, of) != (size_t)n) die("cannot write PARAMS.out");
+        }
+        fclose(pf);
+        fclose(of);
+        return 0;
+    }
+    die("first argument must be score, time or scan");
     return 2;
 }
