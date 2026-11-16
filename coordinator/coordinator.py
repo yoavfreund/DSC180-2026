@@ -439,7 +439,7 @@ class Coordinator:
                 elif e["pending"]:
                     bar = self.ladder.bar
                     e["outcome"] = (f"under the bar {bar:.3f} but not chosen (round went to {win.agent})"
-                                    if e["val_err"] < bar else f"missed the bar {bar:.3f}")
+                                    if e["val_err"] is not None and e["val_err"] < bar else f"missed the bar {bar:.3f}")
                 e["pending"] = False
         win_ppn = progress_per_ns(win.val_err, win.ns, self.cfg.ns_floor)
         head = (f"Round {t + 1} kept {win.agent}'s rule: validation error {win.val_err:.3f}, "
