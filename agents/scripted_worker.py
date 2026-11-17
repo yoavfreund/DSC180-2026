@@ -19,7 +19,6 @@ GOOD = ("/* rule: eye band darker than cheeks */\n"
 FORBIDDEN = ("void *fopen(const char *, const char *);\n"
              "double weak_score(const vj_image *im) { return fopen(\"/etc/hosts\", \"r\") != 0; }\n")
 
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", required=True)
