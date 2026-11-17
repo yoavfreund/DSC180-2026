@@ -29,6 +29,24 @@ eval/tests/run_tests.sh                        # shared C evaluator tests
 eval/eval s.txt k.txt --fp-rates 0.001,0.01,0.1
 ```
 
+## Comparing prompts
+
+`compare.py` runs every prompt in `agents/prompts/` under the same settings, one run at a time:
+Haar only (the bar to beat), each prompt alone against the Haar search, and all prompts together.
+It repeats each Claude setup (`--repeats`, default 2) because Claude runs vary.
+
+```bash
+.venv/bin/python compare.py run --name cmp1 --rounds 10 --repeats 2     # all prompts
+.venv/bin/python compare.py run --name cmp1 --prompts andrew sohan      # a subset
+.venv/bin/python compare.py report --name cmp1                          # tables only
+```
+
+Anything after `--` goes to every `main.py` run (for example `-- --deadline 60`). It prints and
+saves `runs/NAME-report.md` with three tables: detector quality on the audit images (detection at
+1% FP, AUC, rules, total ns, cost), the share of rounds each prompt beat the Haar search in its solo
+runs, and rounds won and share of the vote weight in the team runs. Finished runs are skipped, so
+a stopped comparison picks up where it left off.
+
 ## Docker (recommended for Windows, works everywhere)
 
 The image has Python 3.12, gcc and binutils. `compose.yaml` mounts `train/` and `validate/`
@@ -149,6 +167,8 @@ Validation images exist only in the coordinator process. The CBCL test set is ne
 | `agents/haar_worker.py` | brute-force Haar search (baseline, fallback, LLM-free tests) |
 | `agents/scripted_worker.py` | fake agents for tests (hang, crash, forbidden call, ...) |
 | `agents/prompts/andrew.md` | Andrew's agent strategy (each student writes their own) |
+| `agents/prompts/sohan.md` | Sohan's agent strategy: AND rules and Haar sizes the search skips |
+| `compare.py` | runs every prompt under the same settings and prints comparison tables |
 | `harness/vj_learner.h`, `harness/vj_scan.h`, `harness/runner.c` | the C contract, scan parameters, and the score/time/scan program |
 | `harness/build.py`, `harness/threshold.py` | source checks, compile, run, time; exact weighted threshold fit |
 | `ensemble.py`, `cascade.py`, `predict.py` | reload a run, slice the cascade, write scores for `eval/` |
