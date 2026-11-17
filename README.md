@@ -32,21 +32,24 @@ eval/eval s.txt k.txt --fp-rates 0.001,0.01,0.1
 ## Comparing prompts
 
 `compare.py` runs every prompt in `agents/prompts/` under the same settings, one run at a time:
-Haar only (the bar to beat), each prompt alone against the Haar search, and all prompts together.
-Defaults are small (3 rounds, 1 repeat, at most 10 Claude sessions per run); it prints the session
-cap before it starts. Raise them only for the final numbers.
+Haar only (the bar to beat), each prompt alone against the Haar search, all prompts together
+against the Haar search, and all prompts together with no Haar search competing (agents only: the
+Haar search runs only as the fallback after every agent fails the top of the ladder). Defaults are
+small (3 rounds, 1 repeat, at most 10 Claude sessions per prompt in each run, so a 4-prompt run may
+use 40); it prints the session cap before it starts. Raise them only for the final numbers.
 
 ```bash
-.venv/bin/python compare.py run --name try1 --prompts sohan       # smallest: Haar run + one solo run
+.venv/bin/python compare.py run --name try1 --prompts sohan       # smallest: Haar, one solo and one agents-only run
 .venv/bin/python compare.py run --name try2                       # all prompts, small
 .venv/bin/python compare.py run --name final --rounds 10 --repeats 2 --max-sessions 40   # report numbers
 .venv/bin/python compare.py report --name try2                    # tables only
 ```
 
 Anything after `--` goes to every `main.py` run (for example `-- --deadline 60`). It prints and
-saves `runs/NAME-report.md` with three tables: detector quality on the audit images (detection at
-1% FP, AUC, rules, total ns, cost), the share of rounds each prompt beat the Haar search in its solo
-runs, and rounds won and share of the vote weight in the team runs. Finished runs are skipped, so
+saves `runs/NAME-report.md` with up to four tables: detector quality on the audit images (detection
+at 1% FP, AUC, rules, rules from the Haar fallback, total ns, cost), the share of rounds each prompt
+beat the Haar search in its solo runs, and rounds won and share of the vote weight in the team runs
+and in the agents-only runs. Finished runs are skipped, so
 a stopped comparison picks up where it left off.
 
 ## Docker (recommended for Windows, works everywhere)

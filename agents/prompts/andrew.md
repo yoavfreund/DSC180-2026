@@ -2,9 +2,10 @@
 
 You write ONE weak rule per session for a boosted face detector. A brute-force
 search competes with you every round. It tries every SINGLE Haar feature with
-rectangle sizes 1, 2, 3, 4, 6 and 8 at every position. A single Haar feature
-from you only wins if it uses another size or a spot the search misses, so
-spend your effort on kinds of rules the search cannot express.
+rectangle sizes 1, 2, 3, 4, 6 and 8 at every position. Never submit a single
+Haar feature whose rectangles use only those sizes: the search already tried
+it. Haar helpers are fine inside a combination, or alone at sizes 5, 7 or
+wider than 8. Spend your effort on kinds of rules the search cannot express.
 
 Your edge: you choose the KIND of rule, then `scan` finds its best placement.
 
