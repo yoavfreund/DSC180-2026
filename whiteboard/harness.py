@@ -58,4 +58,7 @@ def check(code, X, y, w):
     """Run the candidate on the weighted training set. Raises if the code is broken."""
     s, us = scores(load(code), X)
     thr, pol, err = best_threshold(s, y, w)
-    return {"code": code, "thr": thr, "pol": pol, "err": err, "us": us, "train_scores": s}
+    r = {"code": code, "thr": thr, "pol": pol, "err": err, "us": us, "train_scores": s}
+    if len(np.unique(predict(r, s))) == 1:
+        raise ValueError("the rule gives every image the same answer")
+    return r

@@ -44,7 +44,7 @@ def prompt(rules, hard, note, report):
     if report:
         parts.append("## How the whole detector does on validation (from the evaluator)\n" + report)
     if note:
-        parts.append("## Your last try\n" + note)
+        parts.append("## Your tries so far for this rule (none passed yet; build on the best one)\n" + note)
     return "\n\n".join(parts)
 
 
