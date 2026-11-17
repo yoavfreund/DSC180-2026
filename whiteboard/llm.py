@@ -12,13 +12,30 @@ import subprocess
 import numpy as np
 
 TASK = """You are writing one weak rule for a face detector (Viola-Jones style boosting).
-Images are 19x19 grayscale, numpy uint8 array img[row, col], row 0 is the top.
-Write a Python function rule(img) that returns ONE number. You don't pick a threshold:
-the harness tries every threshold and both directions and keeps the best.
-Goal: low weighted error on the training images (weights are shown through the hard
-examples below), and fast, because a detector runs this on millions of windows.
-Rectangle sums, differences of region means, and simple comparisons are good.
+
+Write Python with:
+  rule(X, *knobs)  X is a batch of images, numpy float array of shape (n, 19, 19), X[:, row, col],
+                   row 0 is the top. Every image is already adjusted to mean 0 and std 1, so
+                   brightness and contrast carry no information. Return one number per image,
+                   shape (n,). Work on the whole batch with numpy (no Python loop over images).
+  GRID             list of knob tuples to try, e.g. every position and size of your boxes.
+                   The harness tries each one (at most 4000; more get sampled) and keeps the best.
+
+You don't pick a threshold: the harness tries every threshold and both directions.
+Goal: lowest weighted error on the training images (the hard examples below show what the
+weights focus on now), and cheap, because a detector runs this on millions of windows.
+Region means and their differences (eyes darker than cheeks, nose bridge brighter than eyes),
+AND-style combinations (np.minimum / np.maximum of two checks) and symmetry are good ideas.
 Only numpy is available, as np. Don't import anything.
+
+Example:
+def rule(X, r, c, h, w):
+    top = X[:, r:r + h, c:c + w].mean(axis=(1, 2))
+    below = X[:, r + h:r + 2 * h, c:c + w].mean(axis=(1, 2))
+    return below - top
+GRID = [(r, c, h, w) for r in range(19) for c in range(19) for h in range(1, 8) for w in range(2, 20)
+        if r + 2 * h <= 19 and c + w <= 19]
+
 Reply with exactly one ```python code block and nothing else."""
 
 
@@ -37,7 +54,7 @@ def hard_examples(X, y, w, per_class=2):
 
 
 def prompt(rules, hard, note, report):
-    kept = "\n\n".join(f"# rule {i + 1}: weighted error {r['err']:.3f}, {r['us']:.1f} us/image\n{r['code']}"
+    kept = "\n\n".join(f"# rule {i + 1}: weighted error {r['err']:.3f}, best knobs {r['params']}\n{r['code']}"
                        for i, r in enumerate(rules[-8:])) or "None yet. This is the first rule."
     parts = [TASK, "## Rules kept so far (newest 8)\n" + kept,
              "## Hardest training images right now (the next rule should get these right)\n" + hard]
@@ -59,14 +76,17 @@ def ask_claude(text, model):
 
 
 def fake_rule(rng):
-    """Random two-rectangle Haar rule, so the pipeline runs without Claude."""
-    r0, c0 = rng.randrange(0, 15), rng.randrange(0, 15)
-    h, wd = rng.randrange(2, 20 - r0), rng.randrange(2, 20 - c0)
+    """A two-box Haar shape (top/bottom or left/right) searched over every position and size,
+    so the pipeline runs without Claude. Like brute force, but one shape per try."""
     if rng.random() < 0.5:
-        a, b = f"img[{r0}:{r0 + h // 2}, {c0}:{c0 + wd}]", f"img[{r0 + h // 2}:{r0 + h}, {c0}:{c0 + wd}]"
-    else:
-        a, b = f"img[{r0}:{r0 + h}, {c0}:{c0 + wd // 2}]", f"img[{r0}:{r0 + h}, {c0 + wd // 2}:{c0 + wd}]"
-    return f"def rule(img):\n    return {a}.mean() - {b}.mean()"
+        return ("def rule(X, r, c, h, w):\n"
+                "    return X[:, r:r+h, c:c+w].mean(axis=(1, 2)) - X[:, r+h:r+2*h, c:c+w].mean(axis=(1, 2))\n"
+                "GRID = [(r, c, h, w) for r in range(19) for c in range(19) for h in range(1, 10)"
+                " for w in range(1, 20) if r + 2*h <= 19 and c + w <= 19]")
+    return ("def rule(X, r, c, h, w):\n"
+            "    return X[:, r:r+h, c:c+w].mean(axis=(1, 2)) - X[:, r:r+h, c+w:c+2*w].mean(axis=(1, 2))\n"
+            "GRID = [(r, c, h, w) for r in range(19) for c in range(19) for h in range(1, 20)"
+            " for w in range(1, 10) if r + h <= 19 and c + 2*w <= 19]")
 
 
 def write_rule(rules, X, y, w, note, report, model="sonnet", fake=False, rng=random.Random(0)):

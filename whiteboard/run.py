@@ -38,8 +38,9 @@ def main():
     a = ap.parse_args()
 
     d = load_dataset(".", audit_frac=a.audit_frac, seed=0)     # the CBCL test set is never touched here
-    Xtr, ytr = d.images[d.train_idx], d.y[d.train_idx]
-    Xva, yva = d.images[d.val_idx], d.y[d.val_idx]
+    raw_tr, ytr = d.images[d.train_idx], d.y[d.train_idx]          # raw pixels: only for showing Claude
+    Xtr = harness.normalize(raw_tr)                                  # what every rule sees
+    Xva, yva = harness.normalize(d.images[d.val_idx]), d.y[d.val_idx]
     w = np.where(ytr == 1, 0.5 / (ytr == 1).sum(), 0.5 / (ytr == -1).sum())  # faces and non-faces half each
     out = Path("runs") / time.strftime("whiteboard-%m%d-%H%M%S")
     out.mkdir(parents=True)
@@ -49,7 +50,7 @@ def main():
         """Small loop: keep Claude working until a rule beats the bar. None if it never does."""
         tries = []                                   # every try for this rule, shown back to Claude
         for t in range(1, a.tries + 1):
-            code = llm.write_rule(rules, Xtr, ytr, w, "\n\n".join(tries[-5:]), report, a.model, a.fake)  # box 1
+            code = llm.write_rule(rules, raw_tr, ytr, w, "\n\n".join(tries[-5:]), report, a.model, a.fake)  # box 1
             try:
                 r = harness.check(code, Xtr, ytr, w)                                                     # box 2
             except Exception as e:
@@ -57,10 +58,11 @@ def main():
                 print(f"  {label} try {t}: rejected ({e})")
                 continue
             if r["err"] < a.bar:
-                print(f"  {label} try {t}: kept, error {r['err']:.3f}, {r['us']:.1f} us")
+                print(f"  {label} try {t}: kept, error {r['err']:.3f}, best of {r['tried']} settings {r['params']}")
                 return r
-            tries.append(f"Try {t}: weighted error {r['err']:.3f}, not good enough (need below {a.bar}).\n{code}")
-            print(f"  {label} try {t}: error {r['err']:.3f}, not good enough")
+            tries.append(f"Try {t}: weighted error {r['err']:.3f} at best knobs {r['params']}, "
+                         f"not good enough (need below {a.bar}).\n{code}")
+            print(f"  {label} try {t}: error {r['err']:.3f} (best of {r['tried']}), not good enough")
         return None
 
     rules, report, history = [], "", []
@@ -73,7 +75,7 @@ def main():
             r["alpha"] = 0.5 * np.log((1 - r["err"]) / max(r["err"], 1e-10))
             w = w * np.exp(-r["alpha"] * ytr * harness.predict(r, r["train_scores"]))
             w /= w.sum()
-            r["val_scores"], _ = harness.scores(harness.load(r["code"]), Xva)
+            r["val_scores"], _ = harness.scores(harness.load(r["code"])[0], Xva, r["params"])
             rules.append(r)
         if r is None:
             print(f"no rule reached the bar {a.bar} in {a.tries} tries: stopping with {len(rules)} rules")
@@ -88,7 +90,7 @@ def main():
             break
 
     (out / "rules.json").write_text(json.dumps(
-        [{k: r[k] for k in ("code", "thr", "pol", "err", "us", "alpha")} for r in rules], indent=1))
+        [{k: r[k] for k in ("code", "params", "thr", "pol", "err", "us", "alpha")} for r in rules], indent=1))
     (out / "stages.json").write_text(json.dumps(model["stages"]))
     (out / "history.json").write_text(json.dumps(history, indent=1))
     (out / "report.txt").write_text(report)

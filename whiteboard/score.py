@@ -29,7 +29,7 @@ def main():
     else:
         X, y, _ = load_labeled_folder(a.images)
     for r in rules:
-        r["s"], _ = harness.scores(harness.load(r["code"]), X)
+        r["s"], _ = harness.scores(harness.load(r["code"])[0], harness.normalize(X), r["params"])
     out = evaluator.evaluate(rules, model, y, key="s")
     print(f"{len(y)} images ({(y == 1).sum()} faces)")
     print(out.pop("text"))

@@ -1,28 +1,49 @@
-"""Box 2: Harness. Checks a candidate rule and measures its runtime.
+"""Box 2: Harness. Checks a candidate rule, searches its knobs, and measures its runtime.
 
-A rule is Python code that defines rule(img): img is a 19x19 uint8 array, the
-return value is one number. The harness runs it on every training image, picks
-the threshold and direction that give the lowest weighted error, and times it.
+A rule is Python code that defines
+  rule(X, *p)  X is a batch of images, shape (n, 19, 19), each adjusted to brightness 0 and
+               contrast 1 (so a rule can't cheat on lighting). Returns one number per image.
+  GRID         optional list of knob settings p to try, e.g. every position and size of a box.
+The harness tries every setting on the weighted training set, picks the threshold and
+direction with the lowest weighted error for each, and keeps the best setting.
 """
 import time
 
 import numpy as np
 
+MAX_GRID = 4000   # settings tried per candidate; a bigger GRID is sampled down to this
+
+
+def normalize(X):
+    """Each image to mean 0 and std 1 (Viola-Jones variance normalization)."""
+    X = X.astype(np.float32).reshape(len(X), -1)
+    X = (X - X.mean(1, keepdims=True)) / (X.std(1, keepdims=True) + 1e-6)
+    return X.reshape(-1, 19, 19)
+
 
 def load(code):
-    """Turn the rule's source code into a function. Only numpy is available."""
+    """The rule function and its knob settings. Only numpy is available."""
     env = {"np": np}
     exec(code, env)  # local research code: the rule comes from our own Claude call
     if "rule" not in env:
-        raise ValueError("the code must define rule(img)")
-    return env["rule"]
+        raise ValueError("the code must define rule(X, ...)")
+    grid = [tuple(p) if isinstance(p, (tuple, list)) else (p,) for p in env.get("GRID", [()])]
+    if not grid:
+        raise ValueError("GRID is empty")
+    if len(grid) > MAX_GRID:
+        keep = np.sort(np.random.default_rng(0).choice(len(grid), MAX_GRID, replace=False))
+        grid = [grid[i] for i in keep]
+    return env["rule"], grid
 
 
-def scores(rule, X):
-    """The rule's number for every image, plus microseconds per image."""
+def scores(rule, X, p=()):
+    """The rule's number for every (normalized) image, plus microseconds per image."""
     t = time.perf_counter()
-    s = np.array([float(rule(img)) for img in X])
+    with np.errstate(all="ignore"):
+        s = np.asarray(rule(X, *p), dtype=float).reshape(-1)
     us = (time.perf_counter() - t) / len(X) * 1e6
+    if s.shape != (len(X),):
+        raise ValueError(f"rule returned shape {s.shape}, expected ({len(X)},)")
     if not np.all(np.isfinite(s)):
         raise ValueError("the rule returned nan or inf on some image")
     return s, us
@@ -41,12 +62,13 @@ def best_threshold(s, y, w):
     err_pos = face_below + (non_below[-1] - non_below)   # pol +1: left of the cut called non-face
     err_neg = non_below + (face_below[-1] - face_below)  # pol -1: left of the cut called face
     cuts = np.arange(n + 1)
-    ok = (cuts == 0) | (cuts == n) | np.r_[True, s[1:] > s[:-1], True]  # never cut between equal scores
+    ok = (cuts > 0) & (cuts < n) & np.r_[True, s[1:] > s[:-1], True]   # a real cut: both answers used
+    if not ok.any():
+        return 0.0, 1, 1.0                                                 # constant rule: useless
     err_pos[~ok], err_neg[~ok] = np.inf, np.inf
     i_pos, i_neg = int(np.argmin(err_pos)), int(np.argmin(err_neg))
     i, pol, err = (i_pos, 1, err_pos[i_pos]) if err_pos[i_pos] <= err_neg[i_neg] else (i_neg, -1, err_neg[i_neg])
-    thr = s[0] - 1 if i == 0 else s[-1] + 1 if i == n else (s[i - 1] + s[i]) / 2
-    return float(thr), pol, float(err / w.sum())
+    return float((s[i - 1] + s[i]) / 2), pol, float(err / w.sum())
 
 
 def predict(rule_info, s):
@@ -55,10 +77,21 @@ def predict(rule_info, s):
 
 
 def check(code, X, y, w):
-    """Run the candidate on the weighted training set. Raises if the code is broken."""
-    s, us = scores(load(code), X)
-    thr, pol, err = best_threshold(s, y, w)
-    r = {"code": code, "thr": thr, "pol": pol, "err": err, "us": us, "train_scores": s}
-    if len(np.unique(predict(r, s))) == 1:
+    """Try every knob setting on the weighted training set and keep the best one."""
+    rule, grid = load(code)
+    best, problem = None, None
+    for p in grid:
+        try:
+            s, us = scores(rule, X, p)
+        except Exception as e:
+            problem = e
+            continue
+        thr, pol, err = best_threshold(s, y, w)
+        if best is None or err < best["err"]:
+            best = {"code": code, "params": list(p), "thr": thr, "pol": pol, "err": err, "us": us,
+                    "train_scores": s, "tried": len(grid)}
+    if best is None:
+        raise ValueError(f"no setting in GRID ran: {type(problem).__name__}: {problem}")
+    if best["err"] >= 0.5:
         raise ValueError("the rule gives every image the same answer")
-    return r
+    return best
