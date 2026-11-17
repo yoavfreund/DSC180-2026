@@ -38,6 +38,7 @@ def main():
     ap.add_argument("--graded", action="store_true", help="rules vote how sure they are, not just +1/-1")
     ap.add_argument("--weight-cap", type=float, help="cap each training weight at this many times average")
     ap.add_argument("--augment", default="", help="extra training copies: flip,rotate,zoom,shift")
+    ap.add_argument("--best-of", type=int, default=1, help="rules that must pass before keeping the best one")
     ap.add_argument("--tag", default="", help="added to the run folder name")
     a = ap.parse_args()
 
@@ -51,9 +52,13 @@ def main():
     print(f"train {len(ytr)} images, validate {len(yva)}, writing to {out}")
 
     def find_rule(label):
-        """Small loop: keep Claude working until a rule beats the bar. None if it never does."""
-        tries = []                                   # every try for this rule, shown back to Claude
+        """Small loop: keep Claude working until best_of tries beat the bar, then keep the best
+        of those. None if not even one does."""
+        tries, passed = [], []                       # every try for this rule is shown back to Claude
+        key = "z" if a.graded else "err"
         for t in range(1, a.tries + 1):
+            if len(passed) >= a.best_of:
+                break
             code = llm.write_rule(rules, raw_tr, ytr, w, "\n\n".join(tries[-5:]), report, a.model, a.fake)  # box 1
             try:
                 r = harness.check(code, Xtr, ytr, w, a.graded)                                                    # box 2
@@ -62,12 +67,19 @@ def main():
                 print(f"  {label} try {t}: rejected ({e})")
                 continue
             if r["err"] < a.bar:
-                print(f"  {label} try {t}: kept, error {r['err']:.3f}, best of {r['tried']} settings {r['params']}")
-                return r
+                print(f"  {label} try {t}: passed, error {r['err']:.3f}, best of {r['tried']} settings {r['params']}")
+                passed.append(r)
+                tries.append(f"Try {t}: passed with weighted error {r['err']:.3f} at knobs {r['params']}. "
+                             f"Now beat it: lower error is better.\n{code}")
+                continue
             tries.append(f"Try {t}: weighted error {r['err']:.3f} at best knobs {r['params']}, "
                          f"not good enough (need below {a.bar}).\n{code}")
             print(f"  {label} try {t}: error {r['err']:.3f} (best of {r['tried']}), not good enough")
-        return None
+        if not passed:
+            return None
+        best = min(passed, key=lambda r: r[key])
+        print(f"  {label}: kept error {best['err']:.3f} (best of {len(passed)} that passed)")
+        return best
 
     rules, report, history = [], "", []
     for rnd in range(1, a.rounds + 1):

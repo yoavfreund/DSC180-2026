@@ -23,7 +23,8 @@ The 11-15 whiteboard diagram, one file per box, nothing else (~250 lines).
 
 ```
 python -m whiteboard.run --fake        # random Haar rules, no Claude, ~1 s
-python -m whiteboard.run --rounds 4 --rules-per-round 4 --graded --weight-cap 10   # best setup, Claude writes the rules
+python -m whiteboard.run --rounds 4 --rules-per-round 4 --graded --weight-cap 10 --bar 0.45 --best-of 3 \
+    --augment flip,rotate,zoom,shift      # full setup, Claude writes the rules (~25 min)
 python -m whiteboard.score runs/whiteboard-XXXX --audit            # or --images DIR for the test set
 ```
 
@@ -36,8 +37,10 @@ Results land in `runs/whiteboard-<time>/` (rules.json, history.json, report.txt)
 | Whiteboard v1 (no contrast fix, no search) | 4.9 | 15.3 | 25.4 |
 | Whiteboard, random box shapes + search (no Claude) | 16.5 | 46.6 | 63.3 |
 | Whiteboard, Claude shapes + search | 18.0 | 44.3 | 59.7 |
-| **Whiteboard, Claude + search + graded votes + weight cap** | **15.0** | **48.5** | **64.2** |
+| Whiteboard, Claude + search + graded votes + weight cap | 15.0 | 48.5 | 64.2 |
+| Whiteboard full setup, random box shapes (no Claude) | 22.7 | 55.5 | 69.1 |
+| **Whiteboard full setup, Claude** | **28.4** | **59.5** | **75.2** |
 | Team brute-force Haar (rerun locally) | 17.6 | 39.8 | 53.6 |
 | Team 4 agents only (11-17 slides) | 19.7 | 45.3 | 60.2 |
 
-Graded votes + weight cap were picked on the audit photos (no-Claude runs) before the test set was scored. One run each. The test set was already used on 11-02; nothing here was tuned on it.
+Full setup = graded votes with the Real AdaBoost cut, weight cap 10, best of 3 passing tries (floor 0.45), flip/rotate/zoom/shift copies. Each setting was picked on the audit photos (no-Claude runs) before the test set was scored. One run each. The test set was already used on 11-02; nothing here was tuned on it.

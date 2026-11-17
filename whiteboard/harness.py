@@ -49,10 +49,12 @@ def scores(rule, X, p=()):
     return s, us
 
 
-def best_threshold(s, y, w):
-    """Threshold and direction with the lowest weighted error.
+def best_threshold(s, y, w, graded=False):
+    """Threshold and direction with the lowest weighted error, plus that cut's Z.
 
     Prediction: face (+1) if pol * (s - thr) > 0, else non-face (-1).
+    graded: choose the cut with the lowest Z = sum over both sides of sqrt(face weight * non-face
+    weight) instead (Real AdaBoost: the cut whose sides are most one-sided, so votes can be sure).
     """
     order = np.argsort(s, kind="stable")
     s, y, w = s[order], y[order], w[order]
@@ -64,11 +66,18 @@ def best_threshold(s, y, w):
     cuts = np.arange(n + 1)
     ok = (cuts > 0) & (cuts < n) & np.r_[True, s[1:] > s[:-1], True]   # a real cut: both answers used
     if not ok.any():
-        return 0.0, 1, 1.0                                                 # constant rule: useless
+        return 0.0, 1, 1.0, 1.0                                            # constant rule: useless
     err_pos[~ok], err_neg[~ok] = np.inf, np.inf
-    i_pos, i_neg = int(np.argmin(err_pos)), int(np.argmin(err_neg))
-    i, pol, err = (i_pos, 1, err_pos[i_pos]) if err_pos[i_pos] <= err_neg[i_neg] else (i_neg, -1, err_neg[i_neg])
-    return float((s[i - 1] + s[i]) / 2), pol, float(err / w.sum())
+    z = (np.sqrt(face_below * non_below)
+         + np.sqrt((face_below[-1] - face_below) * (non_below[-1] - non_below))) / w.sum()
+    z[~ok] = np.inf
+    if graded:
+        i = int(np.argmin(z))
+        pol, err = (1, err_pos[i]) if err_pos[i] <= err_neg[i] else (-1, err_neg[i])
+    else:
+        i_pos, i_neg = int(np.argmin(err_pos)), int(np.argmin(err_neg))
+        i, pol, err = (i_pos, 1, err_pos[i_pos]) if err_pos[i_pos] <= err_neg[i_neg] else (i_neg, -1, err_neg[i_neg])
+    return float((s[i - 1] + s[i]) / 2), pol, float(err / w.sum()), float(z[i])
 
 
 def predict(rule_info, s):
@@ -95,9 +104,9 @@ def check(code, X, y, w, graded=False):
         except Exception as e:
             problem = e
             continue
-        thr, pol, err = best_threshold(s, y, w)
-        if best is None or err < best["err"]:
-            best = {"code": code, "params": list(p), "thr": thr, "pol": pol, "err": err, "us": us,
+        thr, pol, err, z = best_threshold(s, y, w, graded)
+        if best is None or (z < best["z"] if graded else err < best["err"]):
+            best = {"code": code, "params": list(p), "thr": thr, "pol": pol, "err": err, "z": z, "us": us,
                     "train_scores": s, "tried": len(grid)}
     if best is None:
         raise ValueError(f"no setting in GRID ran: {type(problem).__name__}: {problem}")
