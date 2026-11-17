@@ -2,18 +2,20 @@
 
   # run every setup (skips runs that already finished), then print the tables
   .venv/bin/python compare.py run --name try1                       # small: 3 rounds, 1 repeat, 10 sessions/prompt
-  .venv/bin/python compare.py run --name try2 --prompts sohan        # one prompt only (Haar, solo and agents-only runs)
-  .venv/bin/python compare.py run --name final --rounds 10 --repeats 2 --max-sessions 40   # the report numbers
+  .venv/bin/python compare.py run --name try2 --prompts sohan        # one prompt only
+  .venv/bin/python compare.py run --name main --rounds 25 --max-sessions 100   # the main run
   # tables only, from finished runs
   .venv/bin/python compare.py report --name cmp1
 
 Setups, each a normal main.py run under runs/:
   NAME-haar             brute-force Haar only (deterministic, so run once): the bar to beat
-  NAME-solo-P-rK        prompt P alone against the Haar search, repeat K
-  NAME-team-rK          every prompt together against the Haar search, repeat K
-  NAME-agents-rK        every prompt together with NO Haar search competing, repeat K. The Haar
-                        search still runs as the fallback, but only after every agent has failed
-                        the top of the ladder (0.49), so this shows what the agents build alone.
+  NAME-team-rK          every prompt together, and the Haar search competes every round, repeat K
+  NAME-agents-rK        every prompt together, no Haar search competing. The Haar search runs only
+                        as the fallback, after every agent has failed the top of the ladder (0.49).
+  NAME-agents-only-rK   every prompt together and NO Haar search at all (--no-fallback). A round
+                        where every agent fails the top of the ladder is skipped; two skips in a
+                        row end the run ("stalled"), and the report says so.
+  NAME-solo-P-rK        only with --solo: prompt P alone against the Haar search, repeat K
 
 Every run uses the same shared settings (SHARED below, plus anything after --), so the only
 difference between setups is which agents compete. Runs go one at a time, because rules are timed
@@ -21,14 +23,16 @@ on this machine and parallel runs would slow each other. Compare runs from one m
 
 Session cap: --max-sessions is per prompt, so a run with N prompts may use N times as many
 Claude sessions (every attempt starts one session per prompt). The Haar search uses none.
+If Claude itself fails (usage limit, API errors), the run stops with that stop reason and the
+comparison stops too, so no lost session is counted as a lost round.
 
 The tables:
   1. Detector quality per setup, on the audit images (held out from everything, so honest):
-     detection at 1% false positives and AUC, plus rules accepted, rules from the Haar
-     fallback, total ns and cost.
-  2. Per prompt, solo runs: the share of rounds the prompt beat the Haar search.
-  3. Per prompt, team runs and agents-only runs: rounds won and its share of the final vote
-     weight (alpha).
+     detection at 1%, 5% and 10% false positives and AUC, rules accepted, rules from the Haar
+     fallback, total ns, cost, and why the run ended.
+  2. Per prompt, head to head with the Haar search on the same weights (team runs, and solo runs
+     if any): in how many rounds the prompt's best rule had more progress per ns than the search's.
+  3. Per prompt, each multi-agent setup: rounds won and its share of the final vote weight (alpha).
 """
 import argparse
 import json
@@ -37,22 +41,27 @@ import subprocess
 import sys
 from pathlib import Path
 
+from common.metrics import FP_RATES
+
 REPO = Path(__file__).resolve().parent
 PROMPTS = REPO / "agents" / "prompts"
-SHARED = ["--audit-frac", "0.2", "--weight-cap", "10", "--confidence", "1"]   # README's tested best
+SHARED = ["--audit-frac", "0.2", "--weight-cap", "10", "--confidence", "1",      # README's tested best
+          "--fails-per-level", "2", "--augment", "flip,rotate,zoom,shift"]
 HAAR = "base"
+SESSION_FAILED = "Claude sessions failed"   # start of the stop reason when Claude itself fails
 
 
-def setups(name, prompts, repeats):
-    """(run name, agent args) for every run in the comparison."""
-    out = [(f"{name}-haar", [f"{HAAR}=haar"])]
+def setups(name, prompts, repeats, solo=False):
+    """(run name, agent args, extra main.py flags) for every run in the comparison."""
+    out = [(f"{name}-haar", [f"{HAAR}=haar"], [])]
     for k in range(1, repeats + 1):
-        for p in prompts:
-            out.append((f"{name}-solo-{p}-r{k}", [f"{p}=claude:{PROMPTS / (p + '.md')}", f"{HAAR}=haar"]))
         claude = [f"{p}=claude:{PROMPTS / (p + '.md')}" for p in prompts]
-        if len(prompts) > 1:   # with one prompt the team run would repeat its solo run
-            out.append((f"{name}-team-r{k}", claude + [f"{HAAR}=haar"]))
-        out.append((f"{name}-agents-r{k}", claude))   # no Haar competitor; fallback only
+        if solo:
+            for p in prompts:
+                out.append((f"{name}-solo-{p}-r{k}", [f"{p}=claude:{PROMPTS / (p + '.md')}", f"{HAAR}=haar"], []))
+        out.append((f"{name}-team-r{k}", claude + [f"{HAAR}=haar"], []))
+        out.append((f"{name}-agents-r{k}", claude, []))                         # Haar only as the fallback
+        out.append((f"{name}-agents-only-r{k}", claude, ["--no-fallback"]))     # no Haar at all
     return out
 
 
@@ -65,24 +74,30 @@ def run_all(args, extra):
     for p in args.prompts:
         if not (PROMPTS / f"{p}.md").is_file():
             sys.exit(f"no prompt file agents/prompts/{p}.md")
-    todo = setups(args.name, args.prompts, args.repeats)
-    total = sum(session_cap(agents, args.max_sessions) for _, agents in todo
+    todo = setups(args.name, args.prompts, args.repeats, args.solo)
+    total = sum(session_cap(agents, args.max_sessions) for _, agents, _ in todo
                 if any("=claude:" in a for a in agents))
     print(f"{len(todo)} runs, {args.rounds} rounds each; at most {total} Claude sessions in total "
           f"({args.max_sessions} per prompt per run)")
-    for i, (run, agents) in enumerate(todo, 1):
-        if (REPO / "runs" / run / "summary.json").is_file():
+    for i, (run, agents, flags) in enumerate(todo, 1):
+        summary = REPO / "runs" / run / "summary.json"
+        if summary.is_file():
             print(f"[{i}/{len(todo)}] {run}: done already, skipped")
             continue
         if (REPO / "runs" / run).exists():
             print(f"[{i}/{len(todo)}] {run}: unfinished folder from a stopped run; delete runs/{run} to redo it")
             continue
         cmd = [sys.executable, str(REPO / "main.py"), "--run-name", run, "--rounds", str(args.rounds)]
-        cmd += [x for a in agents for x in ("--agent", a)] + SHARED
+        cmd += [x for a in agents for x in ("--agent", a)] + SHARED + flags
         cmd += ["--max-llm-sessions", str(session_cap(agents, args.max_sessions))] + extra
         print(f"[{i}/{len(todo)}] {run}", flush=True)
         if subprocess.run(cmd, cwd=REPO).returncode != 0:
             print(f"  {run} failed; continuing", file=sys.stderr)
+            continue
+        reason = json.loads(summary.read_text()).get("stop_reason", "") if summary.is_file() else ""
+        if reason.startswith(SESSION_FAILED):
+            sys.exit(f"  {run}: {reason}\nStopping the comparison. Delete runs/{run}, then run the same "
+                     f"command again later: finished runs are skipped.")
 
 
 def load(name):
@@ -92,17 +107,35 @@ def load(name):
     return runs
 
 
-def mean(xs):
+def mean(xs, digits=3):
     xs = [x for x in xs if x is not None]
     if not xs:
         return "-"
     m = statistics.fmean(xs)
-    return f"{m:.3f}" if len(xs) == 1 else f"{m:.3f} ± {statistics.pstdev(xs):.3f}"
+    return f"{m:.{digits}f}" if len(xs) == 1 else f"{m:.{digits}f} ± {statistics.pstdev(xs):.{digits}f}"
 
 
 def table(head, rows):
     lines = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     return "\n".join(lines + ["| " + " | ".join(str(c) for c in r) + " |" for r in rows])
+
+
+def head_to_head(run_dir):
+    """Per round, each Claude agent's best scored rule against the Haar search's rule on the same
+    weights, by progress per ns. Returns {agent: [rounds won, rounds compared]}."""
+    best = {}                                          # (round, agent) -> best progress per ns
+    for line in (run_dir / "audit.jsonl").read_text().splitlines():
+        e = json.loads(line)
+        if e.get("type") == "AgentResult" and e.get("status") == "scored":
+            key = (e["round"], e["agent"])
+            best[key] = max(best.get(key, float("-inf")), e["progress_per_ns"])
+    out = {}
+    for (t, agent), ppn in best.items():
+        if agent == HAAR or (t, HAAR) not in best:
+            continue
+        won, n = out.get(agent, [0, 0])
+        out[agent] = [won + (ppn > best[(t, HAAR)]), n + 1]
+    return out
 
 
 def report(name):
@@ -111,38 +144,44 @@ def report(name):
         sys.exit(f"no finished runs named {name}-* under runs/")
     groups = {}
     for key, s in runs.items():
-        groups.setdefault(key.rsplit("-r", 1)[0] if key != "haar" else "haar", []).append(s)
+        groups.setdefault(key.rsplit("-r", 1)[0] if key != "haar" else "haar", []).append((key, s))
 
-    def det(s):
-        return (s.get("audit_detection_at_fp") or {}).get("0.01")
+    def det(s, r):   # None for runs made before this rate was recorded
+        return (s.get("audit_detection_at_fp") or {}).get(str(r))
 
+    order = {"haar": 0, "team": 1, "agents": 2, "agents-only": 3}
     rows = []
-    for g in sorted(groups, key=lambda g: (g != "haar", g)):
-        ss = groups[g]
-        rows.append([g, len(ss), mean([det(s) for s in ss]), mean([s.get("audit_auc") for s in ss]),
-                     mean([s["accepted"] for s in ss]), mean([s.get("fallback_rules", 0) for s in ss]),
-                     mean([s.get("ns_total") for s in ss]),
-                     f"{sum(a['cost_usd'] for s in ss for a in s['agents'].values()):.2f}"])
+    for g in sorted(groups, key=lambda g: (order.get(g, 4), g)):
+        ss = [s for _, s in groups[g]]
+        rows.append([g, len(ss)] + [mean([det(s, r) for s in ss]) for r in FP_RATES]
+                    + [mean([s.get("audit_auc") for s in ss]),
+                       mean([s["accepted"] for s in ss], 0), mean([s.get("fallback_rules", 0) for s in ss], 0),
+                       mean([s.get("ns_total") for s in ss]),
+                       f"{sum(a['cost_usd'] for s in ss for a in s['agents'].values()):.2f}",
+                       "; ".join(sorted({s.get("stop_reason", "?") for s in ss}))])
     out = ["## 1. Detector quality (audit images)",
-           table(["setup", "runs", "detection @1% FP", "AUC", "rules", "from Haar fallback", "total ns", "cost $"],
-                 rows)]
+           table(["setup", "runs"] + [f"detection @{r:.0%} FP" for r in FP_RATES]
+                 + ["AUC", "rules", "from Haar fallback", "total ns", "cost $", "why it ended"], rows)]
 
-    rows = []
-    for g in sorted(g for g in groups if g.startswith("solo-")):
-        p = g[len("solo-"):]
-        share = [s["agents"][p]["wins"] / max(s["accepted"], 1) for s in groups[g]]
-        st = [s["agents"][p] for s in groups[g]]
-        rows.append([p, mean(share), sum(a["wins"] for a in st), sum(a["submitted"] for a in st),
-                     sum(a["no_submission"] + a["killed_at_deadline"] for a in st)])
-    if rows:
-        out += ["## 2. Solo runs: how often each prompt beat the Haar search",
-                table(["prompt", "share of rounds won", "rounds won", "rules submitted",
-                       "no submission or killed"], rows)]
+    h2h = {}
+    for g in groups:
+        if g == "team" or g.startswith("solo-"):
+            for key, _ in groups[g]:
+                for agent, (won, n) in head_to_head(REPO / "runs" / f"{name}-{key}").items():
+                    h2h.setdefault((g if g == "team" else "solo", agent), []).append((won, n))
+    if h2h:
+        rows = []
+        for (g, agent), xs in sorted(h2h.items()):
+            won, n = sum(x[0] for x in xs), sum(x[1] for x in xs)
+            rows.append([agent, g, won, n, f"{won / n:.3f}" if n else "-"])
+        out += ["## 2. Head to head with the Haar search, same round and weights (more progress per ns)",
+                table(["prompt", "setup", "rounds beaten", "rounds compared", "share"], rows)]
 
     n = 3
-    for g, title in (("team", "Team runs, against the Haar search"),
-                     ("agents", "Agents-only runs, no Haar search competing")):
-        team = groups.get(g, [])
+    for g, title in (("team", "Team runs, with the Haar search competing"),
+                     ("agents", "Agents runs, Haar search only as the fallback"),
+                     ("agents-only", "Agents-only runs, no Haar search at all")):
+        team = [s for _, s in groups.get(g, [])]
         if not team:
             continue
         names = sorted({a for s in team for a in s["agents"]}, key=lambda a: (a == HAAR, a))
@@ -178,6 +217,7 @@ def main():
     ap.add_argument("--max-sessions", type=int, default=10,
                     help="hard cap on Claude sessions per prompt in each run; a run with N prompts may use "
                          "N times this (each attempt starts one session per prompt)")
+    ap.add_argument("--solo", action="store_true", help="also run each prompt alone against the Haar search")
     args = ap.parse_args(argv)
     if args.mode == "run":
         run_all(args, extra)

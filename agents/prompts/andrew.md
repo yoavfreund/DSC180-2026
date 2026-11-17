@@ -9,22 +9,27 @@ wider than 8. Spend your effort on kinds of rules the search cannot express.
 
 Your edge: you choose the KIND of rule, then `scan` finds its best placement.
 
-## Each session: three tool turns, then stop
+## Each session: five tool turns at most, then stop
 1. **Turn 1: scan two ideas.** Read "Rules already in the ensemble" and "Your
    memory". Pick TWO ideas of different kinds. Write each as a scan template
-   with P0..P3 for the numbers you are unsure of, and call `scan` twice in
-   this turn, one call per idea.
-2. **Turn 2: submit, and refine.** In ONE turn, call `submit_rule` with the
-   best concrete rule from the two scans (copy it exactly), AND call `scan`
-   again on that winning template with narrow ranges around its best values
-   (each P within 2 of the best value, step 1).
-3. **Turn 3: resubmit only if better.** If the refined scan's best training
-   error is at least 0.005 lower than what you submitted, call `submit_rule`
-   with it. Otherwise make no call.
-4. After your last tool call, reply with exactly one word: `done`. Write no
+   with P0..P3 for the numbers you are unsure of, and call `scan` TWICE IN
+   THIS SAME TURN, one call per idea.
+2. **Turn 2: time the candidates.** Call `try_rules` ONCE with the two best
+   concrete rules from EACH scan (4 sources; fewer if a scan failed), copied
+   exactly. A scan shows only training error. Only `try_rules` shows each
+   rule's time in ns and its "progress per ns". Never skip this turn.
+3. **Turn 3: submit, and refine.** In ONE turn, call `submit_rule` with the
+   `try_rules` candidate that has the HIGHEST "progress per ns" (copy it
+   exactly), AND call `scan` again on that candidate's template with narrow
+   ranges around its values (each P within 2 of its value, step 1).
+4. **Turn 4: time the refined rule.** If the refined scan's best rule is not
+   the rule you submitted and its training error is at least 0.005 lower,
+   call `try_rules` with it. Otherwise stop.
+5. **Turn 5: resubmit only if better.** If that rule's "progress per ns" is
+   higher than your submission's (the `submit_rule` report shows it), call
+   `submit_rule` with it. Otherwise make no call.
+6. After your last tool call, reply with exactly one word: `done`. Write no
    explanations or summaries in any turn.
-
-You do not need `try_rules`.
 
 ## Count combinations before every scan
 A range `[lo, hi]` has `hi - lo + 1` values; `[lo, hi, step]` has
@@ -68,9 +73,11 @@ combination touches the border.
   the ensemble gets WRONG have in common.
 
 ## Rules of thumb
-- Cost matters. One Haar feature counts as 1 ns; a two-feature rule measured
-  about 3 ns, so it needs about 3 times the progress to win. "Your last result"
-  says what error you needed at your speed.
+- Cost matters, and you cannot guess it from the code. The same Haar helper
+  measured 0.01 ns at one placement and 2 ns at another; texture rules
+  measured 3 to 8 ns. Times under 1 ns count as 1 ns. Choose by the
+  "progress per ns" that `try_rules` reports, not by training error alone.
+  "Your last result" says what error you needed at your speed.
 - A kind of rule that won recently may be used again in a DIFFERENT region.
   Never resubmit a rule whose code appears in your memory or in the accepted
   rules: once accepted, its error is close to 0.5.

@@ -26,31 +26,35 @@ eval/tests/run_tests.sh                        # shared C evaluator tests
 # After training: cascade (calibrated on validation faces), scores, shared evaluator.
 .venv/bin/python cascade.py --run-dir runs/mix-01 --face-loss 0.01
 .venv/bin/python predict.py --run-dir runs/mix-01 --images validate --scores s.txt --key k.txt --cascade
-eval/eval s.txt k.txt --fp-rates 0.001,0.01,0.1
+eval/eval s.txt k.txt --fp-rates 0.01,0.05,0.1
 ```
 
 ## Comparing prompts
 
 `compare.py` runs every prompt in `agents/prompts/` under the same settings, one run at a time:
-Haar only (the bar to beat), each prompt alone against the Haar search, all prompts together
-against the Haar search, and all prompts together with no Haar search competing (agents only: the
-Haar search runs only as the fallback after every agent fails the top of the ladder). Defaults are
-small (3 rounds, 1 repeat, at most 10 Claude sessions per prompt in each run, so a 4-prompt run may
-use 40); it prints the session cap before it starts. Raise them only for the final numbers.
+Haar only (the bar to beat); all prompts together with the Haar search competing every round
+(team); all prompts together with the Haar search only as the fallback after every agent fails the
+top of the ladder (agents); and all prompts together with no Haar search at all (agents-only,
+`--no-fallback`: a round nobody passes is skipped, and two skips in a row end the run as
+"stalled"). `--solo` adds each prompt alone against the Haar search. The tested settings
+(audit 0.2, weight cap 10, confidence 1, 2 fails per level, flip/rotate/zoom/shift copies) are
+built in. Defaults are small (3 rounds, 1 repeat, at most 10 Claude sessions per prompt in each
+run, so a 4-prompt run may use 40); it prints the session cap before it starts.
 
 ```bash
-.venv/bin/python compare.py run --name try1 --prompts sohan       # smallest: Haar, one solo and one agents-only run
+.venv/bin/python compare.py run --name try1 --prompts sohan       # smallest
 .venv/bin/python compare.py run --name try2                       # all prompts, small
-.venv/bin/python compare.py run --name final --rounds 10 --repeats 2 --max-sessions 40   # report numbers
+.venv/bin/python compare.py run --name main --rounds 25 --max-sessions 100   # the main run
 .venv/bin/python compare.py report --name try2                    # tables only
 ```
 
 Anything after `--` goes to every `main.py` run (for example `-- --deadline 60`). It prints and
-saves `runs/NAME-report.md` with up to four tables: detector quality on the audit images (detection
-at 1% FP, AUC, rules, rules from the Haar fallback, total ns, cost), the share of rounds each prompt
-beat the Haar search in its solo runs, and rounds won and share of the vote weight in the team runs
-and in the agents-only runs. Finished runs are skipped, so
-a stopped comparison picks up where it left off.
+saves `runs/NAME-report.md`: detector quality on the audit images (detection at 1%, 5% and 10%
+FP, AUC, rules, rules from the Haar fallback, total ns, cost, why the run ended), each prompt head
+to head with the Haar search in the same rounds (team and solo runs), and rounds won and share of
+the vote weight in each multi-agent setup. Finished runs are skipped, so a stopped comparison picks
+up where it left off. If Claude itself fails (usage limit, API errors) the run ends with that
+reason and the comparison stops, so lost sessions are never counted as lost rounds.
 
 ## Docker (recommended for Windows, works everywhere)
 

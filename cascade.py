@@ -16,10 +16,8 @@ from pathlib import Path
 import numpy as np
 
 from common.data import load_labeled_folder
-from common.metrics import auc, detection_at_fp
+from common.metrics import FP_RATES, auc, detection_at_fp
 from ensemble import apply_cascade, calibrate, default_cuts, learner_outputs, mean_ns_per_image, running_scores
-
-FP_RATES = (0.001, 0.01, 0.1)
 
 
 def main():

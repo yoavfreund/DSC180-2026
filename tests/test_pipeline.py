@@ -272,3 +272,50 @@ def test_balanced_init_and_search_sample(synthetic_dataset, tmp_path):
     assert s.sampled and s.n == SEARCH_ROWS and np.all(s.y < 0) and np.allclose(s.w, 1 / SEARCH_ROWS)
     write_private(tmp_path / "q", d.images[:100], d.y[:100], np.ones(100))
     assert not TrainData.load(tmp_path / "q", search=True).sampled
+
+
+def _fake_claude(monkeypatch, modes):
+    """Claude agents whose sessions are scripted workers: no LLM is called."""
+    import sys
+    real = Coordinator._command
+
+    def command(self, agent, out, private, t, attempt, preview, history):
+        if agent.kind != "claude":
+            return real(self, agent, out, private, t, attempt, preview, history)
+        return [sys.executable, "-m", "agents.scripted_worker", "--mode", modes[agent.name], "--out", str(out)]
+    monkeypatch.setattr(Coordinator, "_command", command)
+
+
+def test_run_stops_when_every_claude_session_fails(synthetic_dataset, tmp_path, monkeypatch):
+    prompt = tmp_path / "p.md"
+    prompt.write_text("test prompt")
+    _fake_claude(monkeypatch, {"x": "api_error", "y": "api_error"})
+    cfg = Config(rounds=3, agents=[AgentSpec("x", "claude", prompt=prompt), AgentSpec("y", "claude", prompt=prompt),
+                                   AgentSpec("base", "haar")], deadline_s=30)
+    run = tmp_path / "run"
+    summary = Coordinator(cfg, synthetic_dataset, run, tmp_path / "work", echo=lambda *_: None).run()
+    assert summary["stop_reason"].startswith("Claude sessions failed (2 of 2 in round 0, attempt 0)")
+    assert "usage limit" in summary["stop_reason"]
+    assert summary["accepted"] == 0          # the Haar rule of that attempt is not kept
+    assert {e["agent"] for e in _audit(run, "SessionFailed")} == {"x", "y"}
+
+
+def test_run_stops_when_some_claude_sessions_keep_failing(synthetic_dataset, tmp_path, monkeypatch):
+    prompt = tmp_path / "p.md"
+    prompt.write_text("test prompt")
+    _fake_claude(monkeypatch, {"x": "api_error", "y": "good"})
+    cfg = Config(rounds=5, agents=[AgentSpec("x", "claude", prompt=prompt), AgentSpec("y", "claude", prompt=prompt)],
+                 deadline_s=30)
+    summary = Coordinator(cfg, synthetic_dataset, tmp_path / "run", tmp_path / "work", echo=lambda *_: None).run()
+    assert summary["accepted"] == 1          # round 0 went on (one failure); round 1 is the second in a row
+    assert summary["stop_reason"].startswith("Claude sessions failed (1 of 2 in round 1")
+
+
+def test_failed_attempt_feedback_shows_the_noise_margin(synthetic_dataset, tmp_path):
+    cfg = Config(rounds=1, agents=[AgentSpec("good", "scripted", mode="good")], confidence=1.0)
+    c = Coordinator(cfg, synthetic_dataset, tmp_path / "run", tmp_path / "work", echo=lambda *_: None)
+    c.ess_val = 100.0                        # margin at 0.04: sqrt(0.04 * 0.96 / 100) = 0.0196
+    c._feedback_failed({"good": {"status": "scored", "val_err": 0.04, "train_err": 0.03, "ns": 0.1}}, 0.05, "raised")
+    text = c.feedback["good"]
+    assert "validation error + noise margin below 0.050" in text
+    assert "0.040 + 0.020 = 0.060, which is not below 0.050" in text

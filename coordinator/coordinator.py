@@ -28,7 +28,7 @@ import numpy as np
 from agents.common import write_private
 from common.audit import AuditLog
 from common.hashing import sha256_array
-from common.metrics import auc, detection_at_fp
+from common.metrics import FP_RATES, auc, detection_at_fp
 from coordinator import brief as B
 from coordinator.ladder import Ladder
 from coordinator.selection import alpha, choose, progress_per_ns, required_error
@@ -107,6 +107,8 @@ class Coordinator:
                                "killed_at_deadline": 0, "wins": 0, "alpha_total": 0.0, "cost_usd": 0.0}
                       for a in cfg.agents}
         self.llm_sessions = 0
+        self.failing_in_a_row = 0          # attempts in a row with a failed Claude session
+        self.session_stop = None           # set when Claude keeps failing; ends the run
         self.order = 0
         self.env = {k: v for k, v in os.environ.items() if k not in SESSION_VARS}
         self.env["PYTHONPATH"] = str(REPO)
@@ -130,6 +132,10 @@ class Coordinator:
             outcome = self._round(t)
             if outcome == "stop":
                 stop_reason = "LLM session budget reached"
+                break
+            if outcome == "session_stop":
+                stop_reason = self.session_stop
+                self.echo(stop_reason)
                 break
             # A skipped round leaves the weights unchanged, so the next round faces the same problem.
             skipped_in_a_row = skipped_in_a_row + 1 if outcome == "skipped" else 0
@@ -168,6 +174,8 @@ class Coordinator:
                 return "stop"
 
             new, outcomes = self._attempt(t, attempt, round_dir)
+            if self.session_stop:      # Claude is failing: end the run, keep nothing from this attempt
+                return "session_stop"
             seen.extend(new)
             pick = self._passing(seen)
             if pick:
@@ -307,7 +315,22 @@ class Coordinator:
                 "pending": o["status"] in ("scored", "duplicate"),
                 "val_err": c.val_err if c else None, "ns": c.ns if c else None,
                 "source": c.source if c else None, "sha256": c.sha256 if c else None})
+        self._check_sessions(t, attempt, outcomes)
         return candidates, outcomes
+
+    def _check_sessions(self, t, attempt, outcomes):
+        """Stop the run when Claude itself fails (usage limit, API errors) instead of counting those
+        sessions as lost rounds: all Claude sessions of one attempt failed, or some failed in
+        `max_failing_attempts` attempts in a row."""
+        claude = [a.name for a in self.cfg.agents if a.kind == "claude"]
+        failed = {n: r for n in claude if (r := session_failure(outcomes[n]))}
+        for name, reason in failed.items():
+            self.audit.emit("SessionFailed", round=t, attempt=attempt, agent=name, reason=reason)
+            self.echo(f"    {name}: Claude session failed: {reason}")
+        self.failing_in_a_row = self.failing_in_a_row + 1 if failed else 0
+        if failed and (len(failed) == len(claude) or self.failing_in_a_row >= self.cfg.max_failing_attempts):
+            self.session_stop = (f"Claude sessions failed ({len(failed)} of {len(claude)} in round {t}, "
+                                 f"attempt {attempt}): {next(iter(failed.values()))}")
 
     def _command(self, agent, out, private, t, attempt, preview, history):
         py = sys.executable
@@ -406,7 +429,9 @@ class Coordinator:
             au = d.audit_idx
             metrics.update(audit_auc=auc(self.F[au], d.y[au]),
                            audit_err=float(np.mean(np.sign(self.F[au] + 1e-12) != d.y[au])),
-                           audit_detection_at_1pct_fp=detection_at_fp(self.F[au], d.y[au], 0.01))
+                           audit_detection_at_1pct_fp=detection_at_fp(self.F[au], d.y[au], 0.01),
+                           audit_detection_at_fp={str(r): detection_at_fp(self.F[au], d.y[au], r)
+                                                  for r in FP_RATES})
         self.audit.emit("RoundAccepted", **{k: v for k, v in entry.items() if k != "source"},
                         weights_in_sha256=w_in, weights_out_sha256=sha256_array(self.w), **metrics)
         self.echo(f"  accepted {c.agent}: validation error {c.val_err:.4f}, {c.ns:.2f} ns, alpha {a:.3f} | "
@@ -426,8 +451,14 @@ class Coordinator:
                  "raised": f"The bar is now {self.ladder.bar:.3f}.",
                  "exhausted": "The bar is at its ceiling; this round is ending."}[result]
         for name, o in outcomes.items():
-            self.feedback[name] = (f"Last attempt: no rule from any agent had validation error below "
-                                   f"{bar:.3f}. {after}\nYour result: {_agent_view(o)}")
+            view = _agent_view(o)
+            if o.get("status") in ("scored", "duplicate") and self.margin(o["val_err"]) > 0:
+                m = self.margin(o["val_err"])
+                view += (f" With the noise margin: {o['val_err']:.3f} + {m:.3f} = {o['val_err'] + m:.3f}, "
+                         f"which is not below {bar:.3f}.")
+            rule = "validation error + noise margin" if self.cfg.confidence > 0 else "validation error"
+            self.feedback[name] = (f"Last attempt: no rule from any agent had {rule} below "
+                                   f"{bar:.3f}. {after}\nYour result: {view}")
 
     def _feedback_round(self, t, win, seen):
         for name, entries in self.memory.items():
@@ -438,8 +469,9 @@ class Coordinator:
                     e["outcome"] = f"ACCEPTED at bar {self.ladder.bar:.3f}"
                 elif e["pending"]:
                     bar = self.ladder.bar
+                    passed = e["val_err"] is not None and e["val_err"] + self.margin(e["val_err"]) < bar
                     e["outcome"] = (f"under the bar {bar:.3f} but not chosen (round went to {win.agent})"
-                                    if e["val_err"] is not None and e["val_err"] < bar else f"missed the bar {bar:.3f}")
+                                    if passed else f"missed the bar {bar:.3f}")
                 e["pending"] = False
         win_ppn = progress_per_ns(win.val_err, win.ns, self.cfg.ns_floor)
         head = (f"Round {t + 1} kept {win.agent}'s rule: validation error {win.val_err:.3f}, "
@@ -470,13 +502,13 @@ class Coordinator:
         if self.ensemble:
             summary.update(val_auc=auc(self.F[va], d.y[va]),
                            val_detection_at_fp={str(r): detection_at_fp(self.F[va], d.y[va], r)
-                                                for r in (0.001, 0.01, 0.1)},
+                                                for r in FP_RATES},
                            ns_total=sum(e["ns"] for e in self.ensemble))
             if len(d.audit_idx):
                 au = d.audit_idx
                 summary.update(audit_auc=auc(self.F[au], d.y[au]),
                                audit_detection_at_fp={str(r): detection_at_fp(self.F[au], d.y[au], r)
-                                                      for r in (0.001, 0.01, 0.1)})
+                                                      for r in FP_RATES})
         (self.run_dir / "summary.json").write_text(json.dumps(summary, indent=1, default=str))
         self.audit.emit("RunEnd", **summary)
         return summary
@@ -524,8 +556,26 @@ def _read_result(out):
         r = json.loads(path.read_text())
     except json.JSONDecodeError:
         return {}
-    keep = ("num_turns", "total_cost_usd", "is_error", "subtype", "error", "api_error_status")
-    return {("worker_" + k if k == "error" else k): r.get(k) for k in keep if r.get(k) is not None}
+    keep = ("num_turns", "total_cost_usd", "is_error", "subtype", "error", "api_error_status", "result_text",
+            "status")
+    return {("worker_" + k if k in ("error", "status") else k): r.get(k) for k in keep if r.get(k) is not None}
+
+
+def session_failure(o):
+    """Why a Claude session failed on Claude's side (usage limit, API or SDK error), or None.
+
+    Being killed at the deadline or running out of turns is the agent's own doing, not a failure."""
+    if o.get("killed_at_deadline"):
+        return None
+    if o.get("worker_error"):
+        return o["worker_error"][:200]
+    if o.get("api_error_status"):
+        return f"API error {o['api_error_status']}" + (f": {o['result_text']}" if o.get("result_text") else "")
+    if o.get("is_error") and o.get("subtype") != "error_max_turns":
+        return o.get("result_text") or f"session ended with an error ({o.get('subtype')})"
+    if not o.get("worker_status"):
+        return f"no result from the session (exit code {o.get('exit_code')})"
+    return None
 
 
 def _first_outcome(o):

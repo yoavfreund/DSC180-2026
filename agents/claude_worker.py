@@ -157,6 +157,8 @@ async def run(args):
                       "num_turns": message.num_turns, "duration_ms": message.duration_ms,
                       "total_cost_usd": message.total_cost_usd, "usage": message.usage,
                       "errors": message.errors, "api_error_status": message.api_error_status}
+            if message.is_error and message.result:   # e.g. a usage-limit message; kept for the audit
+                result["result_text"] = str(message.result)[:300]
             log({"event": "result", **result})
     transcript.close()
     write_result(out_dir, **result)

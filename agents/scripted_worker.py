@@ -6,6 +6,7 @@ modes:
   submit_hang   submit a fixed rule, then sleep until killed (the submission still counts)
   forbidden     submit a rule that calls fopen (the coordinator must reject it)
   crash         exit with an error and no submission
+  api_error     finish like a Claude session that hit the usage limit (is_error, HTTP 429), no submission
 """
 import argparse
 import sys
@@ -37,6 +38,9 @@ def main():
         write_result(out, status="finished")
     elif args.mode == "crash":
         sys.exit(3)
+    elif args.mode == "api_error":
+        write_result(out, status="finished", subtype="success", is_error=True, api_error_status=429,
+                     result_text="Claude AI usage limit reached")
     else:
         sys.exit(f"unknown mode {args.mode}")
 

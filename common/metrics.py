@@ -4,6 +4,8 @@ Ties follow the shared evaluator's rule: tied scores are all in or all out.
 """
 import numpy as np
 
+FP_RATES = (0.01, 0.05, 0.1)   # the team's reporting points: detection at 1%, 5% and 10% false positives
+
 
 def auc(scores, y):
     """Probability that a random face outscores a random non-face; ties count one half."""

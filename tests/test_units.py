@@ -221,3 +221,26 @@ def test_augment_keeps_labels_and_makes_nine_copies():
     for removed in ("invert", "blur"):
         with pytest.raises(ValueError):
             augment(images, y, (removed,))
+
+
+def test_session_failure_tells_claude_errors_from_agent_behavior():
+    from coordinator.coordinator import session_failure
+    ok = {"worker_status": "finished", "subtype": "success", "is_error": False}
+    assert session_failure(ok) is None
+    assert session_failure({"killed_at_deadline": True}) is None                     # the agent was too slow
+    assert session_failure({**ok, "is_error": True, "subtype": "error_max_turns"}) is None
+    assert "429" in session_failure({**ok, "is_error": True, "api_error_status": 429})
+    assert "boom" in session_failure({"worker_status": "error", "worker_error": "RuntimeError: boom"})
+    assert "no result" in session_failure({"exit_code": 1})
+
+
+def test_compare_setups_have_agents_only_without_fallback():
+    import compare
+    runs = {name: (agents, flags) for name, agents, flags in compare.setups("m", ["a", "b"], 1)}
+    assert set(runs) == {"m-haar", "m-team-r1", "m-agents-r1", "m-agents-only-r1"}
+    assert runs["m-agents-only-r1"][1] == ["--no-fallback"] and runs["m-agents-r1"][1] == []
+    assert not any("=haar" in a for a in runs["m-agents-only-r1"][0] + runs["m-agents-r1"][0])
+    assert "base=haar" in runs["m-team-r1"][0]
+    assert {"--fails-per-level", "--augment"} <= set(compare.SHARED)
+    solo = [n for n, _, _ in compare.setups("m", ["a", "b"], 1, solo=True) if "-solo-" in n]
+    assert solo == ["m-solo-a-r1", "m-solo-b-r1"]

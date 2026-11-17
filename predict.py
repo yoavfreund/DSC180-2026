@@ -1,7 +1,7 @@
 """Score a labeled image folder with a finished run, in the shared evaluator's format.
 
   .venv/bin/python predict.py --run-dir runs/NAME --images DIR --scores OUT.txt --key KEY.txt [--cascade]
-  eval/eval OUT.txt KEY.txt --fp-rates 0.001,0.01,0.1
+  eval/eval OUT.txt KEY.txt --fp-rates 0.01,0.05,0.1
 
 DIR holds face/ and non-face/ PGM folders (validate/, or the test set on test day).
 SCORES gets one "<id> <score>" line per image, higher = more face-like: the full

@@ -40,6 +40,7 @@ class Config:
     balanced_init: bool = False       # start with half the weight on faces, half on non-faces
     max_llm_sessions: int = 300       # stop the run before starting more LLM agent sessions than this
     max_skips_in_a_row: int = 2       # stop the run: a skipped round leaves the weights, so it repeats
+    max_failing_attempts: int = 2     # stop the run: Claude sessions failed (usage limit, API) this many attempts in a row
     model: str = "claude-sonnet-5-5"
     effort: str = "low"
     max_turns: int = 8
