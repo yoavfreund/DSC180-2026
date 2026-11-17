@@ -72,11 +72,20 @@ def best_threshold(s, y, w):
 
 
 def predict(rule_info, s):
-    """+1 / -1 votes of one checked rule, given its scores."""
-    return np.where(rule_info["pol"] * (s - rule_info["thr"]) > 0, 1, -1)
+    """The vote of one checked rule, given its scores: `hi` above the threshold, `lo` below.
+    Plain rules vote +1 / -1; graded rules vote how sure they are on each side."""
+    return np.where(s > rule_info["thr"], rule_info["hi"], rule_info["lo"])
 
 
-def check(code, X, y, w):
+def grade(r, y, w):
+    """Graded votes: on each side of the threshold, 0.5 * ln(face weight / non-face weight)."""
+    eps = 1 / len(w)
+    side = r["train_scores"] > r["thr"]
+    for key, mask in (("hi", side), ("lo", ~side)):
+        r[key] = 0.5 * float(np.log((w[mask & (y == 1)].sum() + eps) / (w[mask & (y == -1)].sum() + eps)))
+
+
+def check(code, X, y, w, graded=False):
     """Try every knob setting on the weighted training set and keep the best one."""
     rule, grid = load(code)
     best, problem = None, None
@@ -94,4 +103,7 @@ def check(code, X, y, w):
         raise ValueError(f"no setting in GRID ran: {type(problem).__name__}: {problem}")
     if best["err"] >= 0.5:
         raise ValueError("the rule gives every image the same answer")
+    best["hi"], best["lo"] = best["pol"], -best["pol"]
+    if graded:
+        grade(best, y, w)
     return best

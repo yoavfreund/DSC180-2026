@@ -23,7 +23,8 @@ The 11-15 whiteboard diagram, one file per box, nothing else (~250 lines).
 
 ```
 python -m whiteboard.run --fake        # random Haar rules, no Claude, ~1 s
-python -m whiteboard.run --rounds 4    # Claude writes the rules (needs `claude` on PATH)
+python -m whiteboard.run --rounds 4 --rules-per-round 4 --graded --weight-cap 10   # best setup, Claude writes the rules
+python -m whiteboard.score runs/whiteboard-XXXX --audit            # or --images DIR for the test set
 ```
 
 Results land in `runs/whiteboard-<time>/` (rules.json, history.json, report.txt). The CBCL test set is never loaded.
@@ -34,8 +35,9 @@ Results land in `runs/whiteboard-<time>/` (rules.json, history.json, report.txt)
 |---|---|---|---|
 | Whiteboard v1 (no contrast fix, no search) | 4.9 | 15.3 | 25.4 |
 | Whiteboard, random box shapes + search (no Claude) | 16.5 | 46.6 | 63.3 |
-| **Whiteboard, Claude shapes + search** | **18.0** | **44.3** | **59.7** |
+| Whiteboard, Claude shapes + search | 18.0 | 44.3 | 59.7 |
+| **Whiteboard, Claude + search + graded votes + weight cap** | **15.0** | **48.5** | **64.2** |
 | Team brute-force Haar (rerun locally) | 17.6 | 39.8 | 53.6 |
 | Team 4 agents only (11-17 slides) | 19.7 | 45.3 | 60.2 |
 
-One run each. The test set was already used on 11-02; nothing here was tuned on it.
+Graded votes + weight cap were picked on the audit photos (no-Claude runs) before the test set was scored. One run each. The test set was already used on 11-02; nothing here was tuned on it.

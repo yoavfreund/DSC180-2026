@@ -35,14 +35,18 @@ def main():
     ap.add_argument("--fake", action="store_true", help="random Haar rules instead of Claude")
     ap.add_argument("--audit-frac", type=float, default=0.2,
                     help="share of train/ held out from everything (same split as the team's main.py)")
+    ap.add_argument("--graded", action="store_true", help="rules vote how sure they are, not just +1/-1")
+    ap.add_argument("--weight-cap", type=float, help="cap each training weight at this many times average")
+    ap.add_argument("--augment", default="", help="extra training copies: flip,rotate,zoom,shift")
+    ap.add_argument("--tag", default="", help="added to the run folder name")
     a = ap.parse_args()
 
-    d = load_dataset(".", audit_frac=a.audit_frac, seed=0)     # the CBCL test set is never touched here
+    d = load_dataset(".", audit_frac=a.audit_frac, seed=0, augment_kinds=[k for k in a.augment.split(",") if k])    # the CBCL test set is never touched here
     raw_tr, ytr = d.images[d.train_idx], d.y[d.train_idx]          # raw pixels: only for showing Claude
     Xtr = harness.normalize(raw_tr)                                  # what every rule sees
     Xva, yva = harness.normalize(d.images[d.val_idx]), d.y[d.val_idx]
     w = np.where(ytr == 1, 0.5 / (ytr == 1).sum(), 0.5 / (ytr == -1).sum())  # faces and non-faces half each
-    out = Path("runs") / time.strftime("whiteboard-%m%d-%H%M%S")
+    out = Path("runs") / (time.strftime("whiteboard-%m%d-%H%M%S") + (f"-{a.tag}" if a.tag else ""))
     out.mkdir(parents=True)
     print(f"train {len(ytr)} images, validate {len(yva)}, writing to {out}")
 
@@ -52,7 +56,7 @@ def main():
         for t in range(1, a.tries + 1):
             code = llm.write_rule(rules, raw_tr, ytr, w, "\n\n".join(tries[-5:]), report, a.model, a.fake)  # box 1
             try:
-                r = harness.check(code, Xtr, ytr, w)                                                     # box 2
+                r = harness.check(code, Xtr, ytr, w, a.graded)                                                    # box 2
             except Exception as e:
                 tries.append(f"Try {t} failed in the harness: {type(e).__name__}: {e}\n{code}")
                 print(f"  {label} try {t}: rejected ({e})")
@@ -72,9 +76,12 @@ def main():
             if r is None:
                 break
             # Good enough: keep it and reweight the training set (AdaBoost).
-            r["alpha"] = 0.5 * np.log((1 - r["err"]) / max(r["err"], 1e-10))
+            r["alpha"] = 1.0 if a.graded else 0.5 * np.log((1 - r["err"]) / max(r["err"], 1e-10))
             w = w * np.exp(-r["alpha"] * ytr * harness.predict(r, r["train_scores"]))
             w /= w.sum()
+            if a.weight_cap:                         # no single photo may take over the weights
+                w = np.minimum(w, a.weight_cap / len(w))
+                w /= w.sum()
             r["val_scores"], _ = harness.scores(harness.load(r["code"])[0], Xva, r["params"])
             rules.append(r)
         if r is None:
@@ -90,7 +97,7 @@ def main():
             break
 
     (out / "rules.json").write_text(json.dumps(
-        [{k: r[k] for k in ("code", "params", "thr", "pol", "err", "us", "alpha")} for r in rules], indent=1))
+        [{k: r[k] for k in ("code", "params", "thr", "pol", "hi", "lo", "err", "us", "alpha")} for r in rules], indent=1))
     (out / "stages.json").write_text(json.dumps(model["stages"]))
     (out / "history.json").write_text(json.dumps(history, indent=1))
     (out / "report.txt").write_text(report)

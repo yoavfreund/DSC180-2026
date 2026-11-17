@@ -29,6 +29,8 @@ def main():
     else:
         X, y, _ = load_labeled_folder(a.images)
     for r in rules:
+        r.setdefault("hi", r["pol"])     # runs saved before graded votes existed
+        r.setdefault("lo", -r["pol"])
         r["s"], _ = harness.scores(harness.load(r["code"])[0], harness.normalize(X), r["params"])
     out = evaluator.evaluate(rules, model, y, key="s")
     print(f"{len(y)} images ({(y == 1).sum()} faces)")
