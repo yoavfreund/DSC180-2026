@@ -21,7 +21,7 @@ from pathlib import Path
 
 import numpy as np
 
-from common.data import load_labeled_folder
+from common.data import load_dataset
 from whiteboard import combiner, evaluator, harness, llm
 
 
@@ -33,10 +33,13 @@ def main():
     ap.add_argument("--bar", type=float, default=0.45, help="keep a rule only if weighted error is below this")
     ap.add_argument("--model", default="sonnet")
     ap.add_argument("--fake", action="store_true", help="random Haar rules instead of Claude")
+    ap.add_argument("--audit-frac", type=float, default=0.2,
+                    help="share of train/ held out from everything (same split as the team's main.py)")
     a = ap.parse_args()
 
-    Xtr, ytr, _ = load_labeled_folder("train")
-    Xva, yva, _ = load_labeled_folder("validate")   # the CBCL test set is never touched
+    d = load_dataset(".", audit_frac=a.audit_frac, seed=0)     # the CBCL test set is never touched here
+    Xtr, ytr = d.images[d.train_idx], d.y[d.train_idx]
+    Xva, yva = d.images[d.val_idx], d.y[d.val_idx]
     w = np.where(ytr == 1, 0.5 / (ytr == 1).sum(), 0.5 / (ytr == -1).sum())  # faces and non-faces half each
     out = Path("runs") / time.strftime("whiteboard-%m%d-%H%M%S")
     out.mkdir(parents=True)
@@ -78,6 +81,7 @@ def main():
 
     (out / "rules.json").write_text(json.dumps(
         [{k: r[k] for k in ("code", "thr", "pol", "err", "us", "alpha")} for r in rules], indent=1))
+    (out / "stages.json").write_text(json.dumps(model["stages"]))
     (out / "history.json").write_text(json.dumps(history, indent=1))
     (out / "report.txt").write_text(report)
     print(f"saved {len(rules)} rules to {out}")

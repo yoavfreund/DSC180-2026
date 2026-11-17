@@ -15,8 +15,8 @@ def detection_at(F, y, fp):
     return float(np.mean(F[y == 1] > thr))
 
 
-def evaluate(rules, model, y):
-    running = np.cumsum(model["alpha"][:, None] * votes(rules, "val_scores"), axis=0)
+def evaluate(rules, model, y, key="val_scores"):
+    running = np.cumsum(model["alpha"][:, None] * votes(rules, key), axis=0)
     F = running[-1]
     out = {"rules": len(rules)}
     for fp in (0.01, 0.05, 0.10):
@@ -26,9 +26,11 @@ def evaluate(rules, model, y):
     us = np.array([r["us"] for r in rules])
     alive = np.ones(len(y), bool)
     cost = np.zeros(len(y))                     # microseconds spent on each image
+    used = np.zeros(len(y))                     # rules run on each image
     start, stage_rows = 0, []
     for k, st in enumerate(model["stages"], 1):
         cost[alive] += us[start:st["end"]].sum()
+        used[alive] += st["end"] - start
         fail = alive & (running[st["end"] - 1] < st["theta"])
         stage_rows.append((k, st["end"] - start, int((fail & (y == -1)).sum()), int((fail & (y == 1)).sum())))
         alive &= ~fail
@@ -37,11 +39,13 @@ def evaluate(rules, model, y):
     out["cascade_fp"] = float(alive[y == -1].mean())
     out["cascade_us"] = float(cost.mean())
     out["all_rules_us"] = float(us.sum())
+    out["mean_rules_run"] = float(used.mean())
 
     lines = [f"Validation after {len(rules)} rules:",
              "  classifier: detection " + ", ".join(f"{out[k]:.1%} at {k[4:]}" for k in out if k.startswith("det@")),
              f"  cascade: catches {out['cascade_det']:.1%} of faces, lets through {out['cascade_fp']:.1%} "
-             f"of non-faces, {out['cascade_us']:.1f} us per image (all rules: {out['all_rules_us']:.1f} us)",
+             f"of non-faces, {out['mean_rules_run']:.2f} of {len(rules)} rules run per image, "
+             f"{out['cascade_us']:.1f} us per image (all rules: {out['all_rules_us']:.1f} us)",
              "  stage | rules | non-faces thrown out | faces lost"]
     lines += [f"  {k:5} | {n:5} | {nf:20} | {f}" for k, n, nf, f in stage_rows]
     lines.append(f"  non-faces that pass every stage: {int(alive[y == -1].sum())}, "
