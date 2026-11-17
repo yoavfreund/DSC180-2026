@@ -1,8 +1,9 @@
 """Compare agent prompts under identical settings.
 
   # run every setup (skips runs that already finished), then print the tables
-  .venv/bin/python compare.py run --name cmp1 --rounds 10 --repeats 2
-  .venv/bin/python compare.py run --name cmp1 --prompts andrew sohan -- --deadline 60
+  .venv/bin/python compare.py run --name try1                       # small: 3 rounds, 1 repeat, 10 sessions/run
+  .venv/bin/python compare.py run --name try2 --prompts sohan        # one prompt only (Haar run + its solo run)
+  .venv/bin/python compare.py run --name final --rounds 10 --repeats 2 --max-sessions 40   # the report numbers
   # tables only, from finished runs
   .venv/bin/python compare.py report --name cmp1
 
@@ -40,8 +41,9 @@ def setups(name, prompts, repeats):
     for k in range(1, repeats + 1):
         for p in prompts:
             out.append((f"{name}-solo-{p}-r{k}", [f"{p}=claude:{PROMPTS / (p + '.md')}", f"{HAAR}=haar"]))
-        out.append((f"{name}-team-r{k}",
-                    [f"{p}=claude:{PROMPTS / (p + '.md')}" for p in prompts] + [f"{HAAR}=haar"]))
+        if len(prompts) > 1:   # with one prompt the team run would repeat its solo run
+            out.append((f"{name}-team-r{k}",
+                        [f"{p}=claude:{PROMPTS / (p + '.md')}" for p in prompts] + [f"{HAAR}=haar"]))
     return out
 
 
@@ -50,6 +52,9 @@ def run_all(args, extra):
         if not (PROMPTS / f"{p}.md").is_file():
             sys.exit(f"no prompt file agents/prompts/{p}.md")
     todo = setups(args.name, args.prompts, args.repeats)
+    llm_runs = sum(any("=claude:" in a for a in agents) for _, agents in todo)
+    print(f"{len(todo)} runs, {args.rounds} rounds each; at most {llm_runs * args.max_sessions} "
+          f"Claude sessions in total ({args.max_sessions} per run)")
     for i, (run, agents) in enumerate(todo, 1):
         if (REPO / "runs" / run / "summary.json").is_file():
             print(f"[{i}/{len(todo)}] {run}: done already, skipped")
@@ -58,7 +63,8 @@ def run_all(args, extra):
             print(f"[{i}/{len(todo)}] {run}: unfinished folder from a stopped run; delete runs/{run} to redo it")
             continue
         cmd = [sys.executable, str(REPO / "main.py"), "--run-name", run, "--rounds", str(args.rounds)]
-        cmd += [x for a in agents for x in ("--agent", a)] + SHARED + extra
+        cmd += [x for a in agents for x in ("--agent", a)] + SHARED
+        cmd += ["--max-llm-sessions", str(args.max_sessions)] + extra
         print(f"[{i}/{len(todo)}] {run}", flush=True)
         if subprocess.run(cmd, cwd=REPO).returncode != 0:
             print(f"  {run} failed; continuing", file=sys.stderr)
@@ -142,8 +148,10 @@ def main():
     ap.add_argument("--name", required=True, help="prefix for every run in this comparison")
     ap.add_argument("--prompts", nargs="+", default=sorted(p.stem for p in PROMPTS.glob("*.md")),
                     help="prompt names in agents/prompts/ (default: all)")
-    ap.add_argument("--rounds", type=int, default=10)
-    ap.add_argument("--repeats", type=int, default=2, help="Claude runs vary, so repeat each LLM setup")
+    ap.add_argument("--rounds", type=int, default=3, help="small by default; raise for the final numbers")
+    ap.add_argument("--repeats", type=int, default=1, help="Claude runs vary; repeat each LLM setup for the final numbers")
+    ap.add_argument("--max-sessions", type=int, default=10,
+                    help="hard cap on Claude sessions per run (each attempt is one session per prompt)")
     args = ap.parse_args(argv)
     if args.mode == "run":
         run_all(args, extra)

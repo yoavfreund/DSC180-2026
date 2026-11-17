@@ -33,12 +33,14 @@ eval/eval s.txt k.txt --fp-rates 0.001,0.01,0.1
 
 `compare.py` runs every prompt in `agents/prompts/` under the same settings, one run at a time:
 Haar only (the bar to beat), each prompt alone against the Haar search, and all prompts together.
-It repeats each Claude setup (`--repeats`, default 2) because Claude runs vary.
+Defaults are small (3 rounds, 1 repeat, at most 10 Claude sessions per run); it prints the session
+cap before it starts. Raise them only for the final numbers.
 
 ```bash
-.venv/bin/python compare.py run --name cmp1 --rounds 10 --repeats 2     # all prompts
-.venv/bin/python compare.py run --name cmp1 --prompts andrew sohan      # a subset
-.venv/bin/python compare.py report --name cmp1                          # tables only
+.venv/bin/python compare.py run --name try1 --prompts sohan       # smallest: Haar run + one solo run
+.venv/bin/python compare.py run --name try2                       # all prompts, small
+.venv/bin/python compare.py run --name final --rounds 10 --repeats 2 --max-sessions 40   # report numbers
+.venv/bin/python compare.py report --name try2                    # tables only
 ```
 
 Anything after `--` goes to every `main.py` run (for example `-- --deadline 60`). It prints and
