@@ -12,7 +12,16 @@ into a cascade.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest -q tests            # 67 tests, no LLM
+.venv/bin/python run.py test      # unit tests + a 2-round pipeline run, no LLM, under a minute
+.venv/bin/python run.py all       # Haar baseline end to end, no LLM, same result every run
+.venv/bin/python run.py agents    # main agent comparison; needs a Claude sign-in, varies run to run
+.venv/bin/python run.py clean     # delete everything the targets built
+```
+
+`run.py` only calls the scripts below in order. To run the steps yourself:
+
+```bash
+.venv/bin/python -m pytest -q tests            # 72 tests, no LLM
 eval/tests/run_tests.sh                        # shared C evaluator tests
 
 # Baseline with no LLM: brute-force Haar search is the only agent.

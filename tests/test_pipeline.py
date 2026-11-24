@@ -157,7 +157,8 @@ def test_marginal_ns_charges_expensive_rules_and_not_cheap_ones(images_file, tmp
                          "for (int y = 0; y < 19; y++) for (int x = 0; x < 19; x++) "
                          "s += sqrt(im->px[y][x] + x); return s; }", tmp_path / "loop", tmp_path / "cache").binary
     (c_ns, c_raw), (l_ns, l_raw) = marginal_ns([cheap, loop], path, 256, baseline_binary(tmp_path / "cache"))
-    assert c_ns < 3.0                 # a Haar feature is close to free over the call overhead
+    assert c_ns < 10.0                # a Haar feature is close to free (absolute ns vary by machine;
+                                      # measured 4.7 on an M-series Mac, so 3.0 failed there)
     assert l_ns > 20 * max(c_ns, 1.0)  # 361 square roots are not
     assert c_raw >= c_ns and l_raw >= l_ns
 
