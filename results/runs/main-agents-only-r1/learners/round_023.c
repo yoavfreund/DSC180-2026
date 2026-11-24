@@ -1,0 +1,1 @@
+/* wide haar2 lr width 7 */ double weak_score(const vj_image *im) { return vj_haar2_lr(im, 6, 8, 7, 2); }

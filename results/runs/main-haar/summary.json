@@ -1,0 +1,31 @@
+{
+ "stop_reason": "all rounds done",
+ "accepted": 24,
+ "fallback_rules": 3,
+ "llm_sessions": 0,
+ "agents": {
+  "base": {
+   "sessions": 25,
+   "submitted": 77,
+   "rejected": 0,
+   "no_submission": 0,
+   "killed_at_deadline": 0,
+   "wins": 21,
+   "alpha_total": 6.9239162774245075,
+   "cost_usd": 0.0
+  }
+ },
+ "val_auc": 0.9883423028584319,
+ "val_detection_at_fp": {
+  "0.01": 0.8928571428571429,
+  "0.05": 0.9560439560439561,
+  "0.1": 0.9725274725274725
+ },
+ "ns_total": 44.1177,
+ "audit_auc": 0.9867219631071671,
+ "audit_detection_at_fp": {
+  "0.01": 0.8571428571428571,
+  "0.05": 0.937046004842615,
+  "0.1": 0.9636803874092009
+ }
+}

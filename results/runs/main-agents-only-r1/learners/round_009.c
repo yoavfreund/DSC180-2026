@@ -1,0 +1,1 @@
+/* rule: symmetry of halves */ double weak_score(const vj_image *im) { return fabs(vj_rect(im, 4, 2, 2, 5) - vj_rect(im, 13, 2, 2, 5)) / im->std; }

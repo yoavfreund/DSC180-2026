@@ -1,0 +1,1 @@
+/* rule: three stacked bands */ double weak_score(const vj_image *im) { return vj_haar3_tb(im, 4, 10, 15, 4); }

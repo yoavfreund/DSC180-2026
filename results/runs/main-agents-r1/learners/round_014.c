@@ -1,0 +1,1 @@
+/* rule: texture contrast */ double weak_score(const vj_image *im) { return (vj_rect_std(im, 13, 2, 4, 4) - vj_rect_std(im, 13, 10, 4, 4)) / im->std; }

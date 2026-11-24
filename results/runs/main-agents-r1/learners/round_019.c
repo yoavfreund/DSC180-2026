@@ -1,0 +1,1 @@
+/* mirrored pair vs center */ double weak_score(const vj_image *im) { return (vj_rect(im, 6, 14, 3, 3) + vj_rect(im, 16 - 6, 14, 3, 3) - 2.0 * vj_rect(im, 8, 14, 3, 3)) / im->std; }

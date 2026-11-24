@@ -1,0 +1,61 @@
+{
+ "stop_reason": "all rounds done",
+ "accepted": 25,
+ "fallback_rules": 0,
+ "llm_sessions": 280,
+ "agents": {
+  "andrew": {
+   "sessions": 70,
+   "submitted": 70,
+   "rejected": 0,
+   "no_submission": 0,
+   "killed_at_deadline": 0,
+   "wins": 4,
+   "alpha_total": 1.192413770692407,
+   "cost_usd": 4.0947845
+  },
+  "sohan": {
+   "sessions": 70,
+   "submitted": 70,
+   "rejected": 0,
+   "no_submission": 0,
+   "killed_at_deadline": 0,
+   "wins": 10,
+   "alpha_total": 3.3127938590319763,
+   "cost_usd": 4.088244399999998
+  },
+  "surya": {
+   "sessions": 70,
+   "submitted": 70,
+   "rejected": 0,
+   "no_submission": 0,
+   "killed_at_deadline": 0,
+   "wins": 9,
+   "alpha_total": 3.4871556378339745,
+   "cost_usd": 3.8154659000000004
+  },
+  "uday": {
+   "sessions": 70,
+   "submitted": 70,
+   "rejected": 0,
+   "no_submission": 0,
+   "killed_at_deadline": 0,
+   "wins": 2,
+   "alpha_total": 0.6239341829051573,
+   "cost_usd": 4.033154
+  }
+ },
+ "val_auc": 0.9906988173117205,
+ "val_detection_at_fp": {
+  "0.01": 0.9093406593406593,
+  "0.05": 0.9725274725274725,
+  "0.1": 0.978021978021978
+ },
+ "ns_total": 51.699,
+ "audit_auc": 0.9900720127549343,
+ "audit_detection_at_fp": {
+  "0.01": 0.910411622276029,
+  "0.05": 0.9564164648910412,
+  "0.1": 0.9733656174334141
+ }
+}

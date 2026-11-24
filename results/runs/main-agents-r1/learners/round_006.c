@@ -1,0 +1,1 @@
+/* rule: haar pair */ double weak_score(const vj_image *im) { return vj_haar2_lr(im, 8, 8, 5, 3) - vj_haar2_tb(im, 7, 8, 5, 3); }

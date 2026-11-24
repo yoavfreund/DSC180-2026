@@ -1,0 +1,24 @@
+{
+  "algorithm": "validation_trajectories",
+  "calibrated_on": "validate",
+  "face_loss": 0.01,
+  "rules": 10,
+  "source_sha256": [
+    "49d8e4c0deb360fed241646a79bc2f9c3e73a7edf3b359644788909b2ccc30eb",
+    "7f17f02c2ae99a4ff22b19fb9f5dd1ace0dc9fb9bc994e07abb52ab43556a977",
+    "78169ee515b481dbbf5bd79fc042380e7b0de60a136231867f146e05c21873b1",
+    "30f9d1c92cd768a104834f899fe752cec98c5ef8b838714717d6941ab2274c43",
+    "a43a00353d0fe13f4b3e498e85ae9c5410cff563edbe2c531180f12f0278ef2a",
+    "53570c5f17664820eb4a8b52602537eaaafc6c98862c3971ab4db8c5153716b4",
+    "f5b24682ee6cebb14f16f04ba37235dbd2a48db4ac73c687c9ef5a9dc2e4c18b",
+    "8a05e0ad597548eafd0585aa461f3fc793eed2b9edb78f6b4123f77dd3bffb36",
+    "51a0ab7710f3cfe3dd975555dee414f367f4ceb331d185a40f1568c58e28959d",
+    "6e7c1a3a64f9ca746e0891058fffb952ff93292a25bfb90dea56e17abf5e9808"
+  ],
+  "stages": [
+    {
+      "after": 3,
+      "theta": -0.9966387593985859
+    }
+  ]
+}

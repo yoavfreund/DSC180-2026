@@ -1,0 +1,1 @@
+/* rule: local center vs surround */ double weak_score(const vj_image *im) { return (vj_rect(im, 2, 4, 4, 6) / (double)(4 * 6) - vj_rect(im, 0, 2, 8, 10) / (double)(80)) / im->std; }

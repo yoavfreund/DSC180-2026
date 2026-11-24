@@ -1,0 +1,36 @@
+=== main-haar
+24 rules; 364 validation faces, 682 validation non-faces; face-loss budget 0.010 across 2 selected checkpoints
+AUC: full chain 0.9883, cascade 0.9887
+rules per image: full chain 24, cascade 15.72 (non-faces 11.39, faces 23.84)
+mean rules evaluated per patch: 15.72
+n_pos=364 n_neg=682 auc=0.988685
+fp_rate=0.01 fp_allowed=6 threshold=0.98402605199404092 tp=325 fp=6 tpr=0.892857 fpr=0.008798 precision=0.981873
+fp_rate=0.05 fp_allowed=34 threshold=0.082481067704228472 tp=348 fp=21 tpr=0.956044 fpr=0.030792 precision=0.943089
+fp_rate=0.1 fp_allowed=68 threshold=-0.75583732378232282 tp=355 fp=68 tpr=0.975275 fpr=0.099707 precision=0.839243
+=== main-team-r1
+25 rules; 364 validation faces, 682 validation non-faces; face-loss budget 0.010 across 2 selected checkpoints
+AUC: full chain 0.9937, cascade 0.9929
+rules per image: full chain 25, cascade 16.01 (non-faces 11.29, faces 24.85)
+mean rules evaluated per patch: 16.01
+n_pos=364 n_neg=682 auc=0.992878
+fp_rate=0.01 fp_allowed=6 threshold=0.63417876766187908 tp=347 fp=6 tpr=0.953297 fpr=0.008798 precision=0.983003
+fp_rate=0.05 fp_allowed=34 threshold=-0.83905374244863329 tp=357 fp=32 tpr=0.980769 fpr=0.046921 precision=0.917738
+fp_rate=0.1 fp_allowed=68 threshold=-1.2121698536524261 tp=360 fp=54 tpr=0.989011 fpr=0.079179 precision=0.869565
+=== main-agents-r1
+25 rules; 364 validation faces, 682 validation non-faces; face-loss budget 0.010 across 2 selected checkpoints
+AUC: full chain 0.9929, cascade 0.9899
+rules per image: full chain 25, cascade 16.62 (non-faces 12.22, faces 24.86)
+mean rules evaluated per patch: 16.62
+n_pos=364 n_neg=682 auc=0.989897
+fp_rate=0.01 fp_allowed=6 threshold=0.83372951180923938 tp=338 fp=4 tpr=0.928571 fpr=0.005865 precision=0.988304
+fp_rate=0.05 fp_allowed=34 threshold=-0.18167988958479533 tp=352 fp=26 tpr=0.967033 fpr=0.038123 precision=0.931217
+fp_rate=0.1 fp_allowed=68 threshold=-0.86576987221351132 tp=357 fp=57 tpr=0.980769 fpr=0.083578 precision=0.862319
+=== main-agents-only-r1
+25 rules; 364 validation faces, 682 validation non-faces; face-loss budget 0.010 across 2 selected checkpoints
+AUC: full chain 0.9907, cascade 0.9910
+rules per image: full chain 25, cascade 17.55 (non-faces 13.63, faces 24.88)
+mean rules evaluated per patch: 17.55
+n_pos=364 n_neg=682 auc=0.991003
+fp_rate=0.01 fp_allowed=6 threshold=0.88013939384074047 tp=331 fp=6 tpr=0.909341 fpr=0.008798 precision=0.982196
+fp_rate=0.05 fp_allowed=34 threshold=-0.33847240504347187 tp=354 fp=29 tpr=0.972527 fpr=0.042522 precision=0.924282
+fp_rate=0.1 fp_allowed=68 threshold=-1.045230957137218 tp=356 fp=57 tpr=0.978022 fpr=0.083578 precision=0.861985

@@ -1,0 +1,1 @@
+/* rule: band vs band with gap */ double weak_score(const vj_image *im) { return (vj_rect(im, 2, 7, 9, 3) - vj_rect(im, 2, 14, 9, 3)) / im->std; }

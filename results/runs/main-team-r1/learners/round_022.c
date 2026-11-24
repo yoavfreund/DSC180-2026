@@ -1,0 +1,1 @@
+/* haar3_tb width 5 */ double weak_score(const vj_image *im) { return vj_haar3_tb(im, 12, 1, 5, 1); }

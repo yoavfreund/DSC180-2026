@@ -1,0 +1,1 @@
+/* rule: a band is darker than a band further down, with a gap */ double weak_score(const vj_image *im) { return (vj_rect(im, 2, 7, 6, 3) - vj_rect(im, 2, 7 + 7, 6, 3)) / im->std; }

@@ -1,0 +1,25 @@
+{
+ "stop_reason": "all rounds done",
+ "accepted": 10,
+ "fallback_rules": 0,
+ "llm_sessions": 0,
+ "agents": {
+  "base": {
+   "sessions": 10,
+   "submitted": 50,
+   "rejected": 0,
+   "no_submission": 0,
+   "killed_at_deadline": 0,
+   "wins": 10,
+   "alpha_total": 4.128178154063422,
+   "cost_usd": 0.0
+  }
+ },
+ "val_auc": 0.9792163481679611,
+ "val_detection_at_fp": {
+  "0.01": 0.6401098901098901,
+  "0.05": 0.8928571428571429,
+  "0.1": 0.945054945054945
+ },
+ "ns_total": 15.1877
+}

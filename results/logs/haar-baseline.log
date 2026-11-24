@@ -1,0 +1,164 @@
++ /Users/sohan/code/DSC180-2026/.claude/worktrees/q1-results/.venv/bin/python main.py --run-name haar-baseline --rounds 10 --agent base=haar
+5931 training images (agents), 1046 validation images (hidden), 0 audit images (held out); ladder [0.3, 0.33, 0.36, 0.39, 0.42, 0.45, 0.48, 0.49]
+round 0: bar 0.300
+    base: val err 0.1205, train err 0.1251, 1.25 ns (10.5 s)
+  accepted base: validation error 0.1205, 1.25 ns, alpha 0.994 | ensemble validation AUC 0.8570
+round 1: bar 0.300
+    base: val err 0.2413, train err 0.2304, 2.26 ns (10.5 s)
+  accepted base: validation error 0.2413, 2.26 ns, alpha 0.573 | ensemble validation AUC 0.9294
+round 2: bar 0.300
+    base: val err 0.2423, train err 0.2525, 2.95 ns (10.5 s)
+  accepted base: validation error 0.2423, 2.95 ns, alpha 0.570 | ensemble validation AUC 0.9570
+round 3: bar 0.300
+    base: val err 0.3331, train err 0.2830, 0.76 ns (10.7 s)
+  attempt 0: nothing under 0.300 -> failed
+    base: (duplicate) val err 0.3331, train err 0.2830, 0.76 ns (0.0 s)
+  attempt 1: nothing under 0.300 -> failed
+    base: (duplicate) val err 0.3331, train err 0.2830, 0.76 ns (0.0 s)
+  attempt 2: nothing under 0.300 -> failed
+    base: (duplicate) val err 0.3331, train err 0.2830, 0.76 ns (0.0 s)
+  attempt 3: nothing under 0.300 -> failed
+    base: (duplicate) val err 0.3331, train err 0.2830, 0.76 ns (0.0 s)
+  attempt 4: nothing under 0.300 -> raised, bar now 0.330
+    base: (duplicate) val err 0.3331, train err 0.2830, 0.76 ns (0.0 s)
+  attempt 5: nothing under 0.330 -> failed
+    base: (duplicate) val err 0.3331, train err 0.2830, 0.76 ns (0.0 s)
+  attempt 6: nothing under 0.330 -> failed
+    base: (duplicate) val err 0.3331, train err 0.2830, 0.76 ns (0.0 s)
+  attempt 7: nothing under 0.330 -> failed
+    base: (duplicate) val err 0.3331, train err 0.2830, 0.76 ns (0.0 s)
+  attempt 8: nothing under 0.330 -> failed
+    base: (duplicate) val err 0.3331, train err 0.2830, 0.76 ns (0.0 s)
+  attempt 9: nothing under 0.330 -> raised, bar now 0.360
+  accepted base: validation error 0.3331, 0.76 ns, alpha 0.347 | ensemble validation AUC 0.9627
+round 4: bar 0.330
+    base: val err 0.3015, train err 0.3238, 0.96 ns (10.6 s)
+  accepted base: validation error 0.3015, 0.96 ns, alpha 0.420 | ensemble validation AUC 0.9687
+round 5: bar 0.300
+    base: val err 0.3601, train err 0.3247, 3.50 ns (10.6 s)
+  attempt 0: nothing under 0.300 -> failed
+    base: (duplicate) val err 0.3601, train err 0.3247, 3.50 ns (0.0 s)
+  attempt 1: nothing under 0.300 -> failed
+    base: (duplicate) val err 0.3601, train err 0.3247, 3.50 ns (0.0 s)
+  attempt 2: nothing under 0.300 -> failed
+    base: (duplicate) val err 0.3601, train err 0.3247, 3.50 ns (0.0 s)
+  attempt 3: nothing under 0.300 -> failed
+    base: (duplicate) val err 0.3601, train err 0.3247, 3.50 ns (0.0 s)
+  attempt 4: nothing under 0.300 -> raised, bar now 0.330
+    base: (duplicate) val err 0.3601, train err 0.3247, 3.50 ns (0.0 s)
+  attempt 5: nothing under 0.330 -> failed
+    base: (duplicate) val err 0.3601, train err 0.3247, 3.50 ns (0.0 s)
+  attempt 6: nothing under 0.330 -> failed
+    base: (duplicate) val err 0.3601, train err 0.3247, 3.50 ns (0.0 s)
+  attempt 7: nothing under 0.330 -> failed
+    base: (duplicate) val err 0.3601, train err 0.3247, 3.50 ns (0.0 s)
+  attempt 8: nothing under 0.330 -> failed
+    base: (duplicate) val err 0.3601, train err 0.3247, 3.50 ns (0.0 s)
+  attempt 9: nothing under 0.330 -> raised, bar now 0.360
+    base: (duplicate) val err 0.3601, train err 0.3247, 3.50 ns (0.0 s)
+  attempt 10: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.3601, train err 0.3247, 3.50 ns (0.0 s)
+  attempt 11: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.3601, train err 0.3247, 3.50 ns (0.0 s)
+  attempt 12: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.3601, train err 0.3247, 3.50 ns (0.0 s)
+  attempt 13: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.3601, train err 0.3247, 3.50 ns (0.0 s)
+  attempt 14: nothing under 0.360 -> raised, bar now 0.390
+  accepted base: validation error 0.3601, 3.50 ns, alpha 0.287 | ensemble validation AUC 0.9718
+round 6: bar 0.360
+    base: val err 0.3704, train err 0.3417, 0.46 ns (10.6 s)
+  attempt 0: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.3704, train err 0.3417, 0.46 ns (0.0 s)
+  attempt 1: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.3704, train err 0.3417, 0.46 ns (0.0 s)
+  attempt 2: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.3704, train err 0.3417, 0.46 ns (0.0 s)
+  attempt 3: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.3704, train err 0.3417, 0.46 ns (0.0 s)
+  attempt 4: nothing under 0.360 -> raised, bar now 0.390
+  accepted base: validation error 0.3704, 0.46 ns, alpha 0.265 | ensemble validation AUC 0.9735
+round 7: bar 0.360
+    base: val err 0.3818, train err 0.3433, 0.68 ns (10.5 s)
+  attempt 0: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.3818, train err 0.3433, 0.68 ns (0.0 s)
+  attempt 1: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.3818, train err 0.3433, 0.68 ns (0.0 s)
+  attempt 2: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.3818, train err 0.3433, 0.68 ns (0.0 s)
+  attempt 3: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.3818, train err 0.3433, 0.68 ns (0.0 s)
+  attempt 4: nothing under 0.360 -> raised, bar now 0.390
+  accepted base: validation error 0.3818, 0.68 ns, alpha 0.241 | ensemble validation AUC 0.9757
+round 8: bar 0.360
+    base: val err 0.4095, train err 0.3486, 1.77 ns (10.7 s)
+  attempt 0: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.4095, train err 0.3486, 1.77 ns (0.0 s)
+  attempt 1: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.4095, train err 0.3486, 1.77 ns (0.0 s)
+  attempt 2: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.4095, train err 0.3486, 1.77 ns (0.0 s)
+  attempt 3: nothing under 0.360 -> failed
+    base: (duplicate) val err 0.4095, train err 0.3486, 1.77 ns (0.0 s)
+  attempt 4: nothing under 0.360 -> raised, bar now 0.390
+    base: (duplicate) val err 0.4095, train err 0.3486, 1.77 ns (0.0 s)
+  attempt 5: nothing under 0.390 -> failed
+    base: (duplicate) val err 0.4095, train err 0.3486, 1.77 ns (0.0 s)
+  attempt 6: nothing under 0.390 -> failed
+    base: (duplicate) val err 0.4095, train err 0.3486, 1.77 ns (0.0 s)
+  attempt 7: nothing under 0.390 -> failed
+    base: (duplicate) val err 0.4095, train err 0.3486, 1.77 ns (0.0 s)
+  attempt 8: nothing under 0.390 -> failed
+    base: (duplicate) val err 0.4095, train err 0.3486, 1.77 ns (0.0 s)
+  attempt 9: nothing under 0.390 -> raised, bar now 0.420
+  accepted base: validation error 0.4095, 1.77 ns, alpha 0.183 | ensemble validation AUC 0.9773
+round 9: bar 0.390
+    base: val err 0.3786, train err 0.3516, 0.60 ns (10.7 s)
+  accepted base: validation error 0.3786, 0.60 ns, alpha 0.248 | ensemble validation AUC 0.9792
+{
+ "stop_reason": "all rounds done",
+ "accepted": 10,
+ "fallback_rules": 0,
+ "llm_sessions": 0,
+ "agents": {
+  "base": {
+   "sessions": 10,
+   "submitted": 50,
+   "rejected": 0,
+   "no_submission": 0,
+   "killed_at_deadline": 0,
+   "wins": 10,
+   "alpha_total": 4.128178154063422,
+   "cost_usd": 0.0
+  }
+ },
+ "val_auc": 0.9792163481679611,
+ "val_detection_at_fp": {
+  "0.01": 0.6401098901098901,
+  "0.05": 0.8928571428571429,
+  "0.1": 0.945054945054945
+ },
+ "ns_total": 15.1877
+}
++ /Users/sohan/code/DSC180-2026/.claude/worktrees/q1-results/.venv/bin/python cascade.py --run-dir runs/haar-baseline --face-loss 0.01
+10 rules; 364 validation faces, 682 validation non-faces; face-loss budget 0.010 across 1 selected checkpoints
+after rules | theta    | faces kept | non-faces left
+          3 |  -0.9966 |     0.9945 |         0.4589
+
+AUC: full chain 0.9792, cascade 0.9785
+detection at FP rate 0.01: full chain 0.6401, cascade 0.6401
+detection at FP rate 0.05: full chain 0.8929, cascade 0.8929
+detection at FP rate 0.1: full chain 0.9451, cascade 0.9451
+rules per image: full chain 10, cascade 7.52 (non-faces 6.21, faces 9.96)
+
+wrote runs/haar-baseline/cascade.json
++ /Users/sohan/code/DSC180-2026/.claude/worktrees/q1-results/.venv/bin/python predict.py --run-dir runs/haar-baseline --images validate --scores runs/haar-baseline/scores.txt --key runs/haar-baseline/key.txt --cascade
+wrote 1046 scores to runs/haar-baseline/scores.txt and labels to runs/haar-baseline/key.txt
+mean rules evaluated per patch: 7.52
++ make -C eval eval
+make: `eval' is up to date.
++ eval/eval runs/haar-baseline/scores.txt runs/haar-baseline/key.txt --fp-rates 0.01,0.05,0.1
+n_pos=364 n_neg=682 auc=0.978493
+fp_rate=0.01 fp_allowed=6 threshold=1.8467484944863855 tp=233 fp=5 tpr=0.640110 fpr=0.007331 precision=0.978992
+fp_rate=0.05 fp_allowed=34 threshold=0.23999839090253988 tp=325 fp=34 tpr=0.892857 fpr=0.049853 precision=0.905292
+fp_rate=0.1 fp_allowed=68 threshold=-0.54724974733882992 tp=344 fp=62 tpr=0.945055 fpr=0.090909 precision=0.847291

@@ -1,0 +1,1 @@
+/* rule: a wide band over the band below it */ double weak_score(const vj_image *im) { return vj_haar2_tb(im, 5, 4, 13, 1); }

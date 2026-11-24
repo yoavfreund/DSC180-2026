@@ -1,0 +1,1 @@
+/* eye band vs cheek combo */ double weak_score(const vj_image *im) { return vj_haar3_tb(im, 7, 9, 5, 2) ; }

@@ -1,0 +1,1 @@
+/* rule: haar3 lr width 5 */ double weak_score(const vj_image *im) { return vj_haar3_lr(im, 8, 1, 5, 3); }

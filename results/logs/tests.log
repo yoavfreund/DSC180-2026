@@ -1,0 +1,24 @@
+........................................................................ [ 93%]
+.....                                                                    [100%]
+77 passed in 23.43s
+PASS  mock/constant
+PASS  mock/hand_counts
+PASS  mock/hand_rates
+PASS  mock/inverted
+PASS  mock/perfect
+PASS  reject/bad_label
+PASS  reject/duplicate_id
+PASS  reject/duplicate_key
+PASS  reject/empty_scores
+PASS  reject/extra_id
+PASS  reject/inf_score
+PASS  reject/missing_id
+PASS  reject/nan_score
+PASS  reject/one_class
+PASS  reject/overflow_score
+PASS  reject/text_score
+PASS  reject/three_tokens
+PASS  usage
+crosscheck: 500 random trials match the brute-force reference
+PASS  crosscheck
+ALL TESTS PASSED

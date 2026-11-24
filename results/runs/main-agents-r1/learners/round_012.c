@@ -1,0 +1,1 @@
+/* eyes pair vs center */ double weak_score(const vj_image *im) { return (vj_rect(im, 5, 6, 3, 3) + vj_rect(im, 19 - 5 - 3, 6, 3, 3) - 2.0 * vj_rect(im, 9 - 3 / 2, 6, 3, 3)) / im->std; }

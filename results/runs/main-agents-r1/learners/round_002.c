@@ -1,0 +1,1 @@
+/* rule: one region vs whole face */ double weak_score(const vj_image *im) { return (vj_rect(im, 8, 0, 3, 3) / (double)(3 * 3) - im->mean) / im->std; }

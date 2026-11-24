@@ -1,5 +1,8 @@
 # Agent-written weak rules for a boosted face detector
 
+**Latest results (Nov 24, pooled re-split): [`results/RESULTS.md`](results/RESULTS.md)**: tests, Haar
+baseline, and the 25-round agent comparison.
+
 Branch `andrew-agent-learners` (Andrew's implementation). Built from `coordinating-agents`; the
 shared evaluator `eval/` comes from `harness-validation`.
 

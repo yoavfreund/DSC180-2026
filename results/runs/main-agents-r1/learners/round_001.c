@@ -1,0 +1,1 @@
+/* rule: both eyes darker than the nose bridge */ double weak_score(const vj_image *im) { return (vj_rect(im, 8, 2, 3, 3) - fmax(vj_rect(im, 4, 2, 3, 3), vj_rect(im, 12, 2, 3, 3))) / im->std; }

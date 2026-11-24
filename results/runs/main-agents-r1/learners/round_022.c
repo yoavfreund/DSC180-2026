@@ -1,0 +1,1 @@
+/* mouth band plus eye band */ double weak_score(const vj_image *im) { return vj_haar2_tb(im, 6, 4, 11, 2) + vj_haar3_tb(im, 6, 9, 11, 1); }

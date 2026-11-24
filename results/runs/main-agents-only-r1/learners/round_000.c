@@ -1,0 +1,1 @@
+/* rule: paired side regions against the center */ double weak_score(const vj_image *im) { return (vj_rect(im, 4, 2, 3, 4) + vj_rect(im, 19 - 4 - 3, 2, 3, 4) - 2.0 * vj_rect(im, 9 - 3 / 2, 2, 3, 4)) / im->std; }

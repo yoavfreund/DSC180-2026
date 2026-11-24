@@ -1,0 +1,1 @@
+/* rule: haar3 tb width 9 */ double weak_score(const vj_image *im) { return vj_haar3_tb(im, 2, 6, 9, 2); }
