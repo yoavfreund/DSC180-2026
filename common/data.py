@@ -1,12 +1,13 @@
 """Load 19x19 CBCL PGM images.
 
-The fixed split is the folder split the team already staged:
+The split is the pooled split made by make_split.py (CBCL training and test sets mixed, then
+drawn at random by class and source; see split_manifest.tsv):
   <root>/train/{face,non-face}     agent-visible training images
   <root>/validate/{face,non-face}  hidden validation images (selection and alpha)
 Optionally, an AUDIT share of the training folder is held out from everything:
 agents never see it, it has no weight, and no decision uses it. It only
-measures the ensemble honestly while the run goes. The CBCL test set is never
-loaded here.
+measures the ensemble honestly while the run goes. The held-out test split lives
+outside the repo and is never loaded here.
 """
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +29,14 @@ def read_pgm(path):
     if len(data) != 361:
         raise ValueError(f"invalid PGM data length: {path}")
     return np.frombuffer(data, dtype=np.uint8).reshape(19, 19)
+
+
+SOURCES = ("cbcl", "cmu")
+
+
+def source_of(name):
+    """'cmu' for an image from the original CBCL test download (files cmu_*), else 'cbcl'."""
+    return "cmu" if Path(name).name.startswith("cmu_") else "cbcl"
 
 
 def load_labeled_folder(folder, limit_per_class=None):
