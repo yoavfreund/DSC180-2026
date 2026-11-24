@@ -5,9 +5,8 @@ A cascade is the same chain with rejection points: after the first c rules, an
 image whose running score F_c(x) is below theta is rejected as a non-face and
 no more rules are computed for it.
 
-theta at each cut comes from validation FACES: it is set so that only a small
-share of the faces still alive at that cut fall below it. Face loss adds up over
-cuts, so the total budget is split evenly: per_cut = face_loss / number of cuts.
+Trajectory calibration chooses checkpoints and thresholds from validation
+scores under a single face-loss budget for the entire cascade.
 
 One sortable score per image (for the shared FP-point evaluator): an image
 rejected at an earlier cut always ranks below one rejected later, and survivors
@@ -33,24 +32,39 @@ def load_manifest(run_dir):
     return entries
 
 
-def learner_outputs(run_dir, images):
+def learner_outputs(run_dir, images, rules=None, build_dir=None):
     """h_t(x) in {-1, +1} for every accepted rule t and image x: shape (T, n)."""
     run_dir = Path(run_dir)
-    if (run_dir / "harness" / "runner.c").exists():
-        hb.use_harness(run_dir / "harness")       # rebuild exactly as the run built
-    entries = load_manifest(run_dir)
-    images_path = run_dir / "build" / f"images-{len(images)}-{hashlib.sha256(images.tobytes()).hexdigest()[:12]}.bin"
+    snapshot = run_dir / "harness"
+    hb.use_harness(snapshot if (snapshot / "runner.c").exists() else Path(__file__).parent / "harness")
+    entries = chain_prefix(run_dir, rules)
+    build_dir = Path(build_dir) if build_dir is not None else run_dir / "build"
+    images_path = build_dir / f"images-{len(images)}-{hashlib.sha256(images.tobytes()).hexdigest()[:12]}.bin"
     images_path.parent.mkdir(parents=True, exist_ok=True)
     write_images(images, images_path)
     H = np.empty((len(entries), len(images)), dtype=np.int8)
     for t, e in enumerate(entries):
-        source = (run_dir / e["source"]).read_text(encoding="utf-8")
-        if hashlib.sha256(source.encode("utf-8")).hexdigest() != e["source_sha256"]:
-            raise ValueError(f"{e['source']} does not match its hash in the manifest")
-        build = build_learner(source, run_dir / "build" / f"round_{e['round']:03d}", run_dir / "cache")
+        source = read_rule(run_dir, e)
+        build = build_learner(source, build_dir / f"round_{e['round']:03d}", build_dir / "cache")
         scores = run_scores(build.binary, images_path, len(images))
         H[t] = Stump(e["theta"], e["polarity"], e["val_err"]).predict(scores)
     return entries, H
+
+
+def chain_prefix(run_dir, rules=None):
+    entries = load_manifest(run_dir)
+    if rules is None:
+        return entries
+    if not 1 <= rules <= len(entries):
+        raise ValueError(f"requested {rules} rules, available range is 1..{len(entries)}")
+    return entries[:rules]
+
+
+def read_rule(run_dir, entry):
+    source = (Path(run_dir) / entry["source"]).read_text(encoding="utf-8")
+    if hashlib.sha256(source.encode("utf-8")).hexdigest() != entry["source_sha256"]:
+        raise ValueError(f"{entry['source']} does not match its hash in the manifest")
+    return source
 
 
 def running_scores(H, alphas):
@@ -84,7 +98,52 @@ def calibrate(F_cum, y, cuts, face_loss):
     return stages
 
 
-def apply_cascade(F_cum, stages, alphas):
+def calibrate_trajectories(F_cum, y, face_loss, cuts=None):
+    """Choose soft-cascade stages from complete validation score trajectories.
+
+    A stage rejects only below zero and preserves any validation trajectory
+    that reaches zero or higher at or after that checkpoint. Among the
+    surviving patches, rank checkpoints by non-face rule evaluations saved
+    minus one comparison per patch reaching the stage. Spend the face budget
+    across all chosen stages, keeping tied scores together.
+    """
+    T, n = F_cum.shape
+    cuts = list(range(1, T)) if cuts is None else list(cuts)
+    if any(not 1 <= c < T for c in cuts) or sorted(set(cuts)) != cuts:
+        raise ValueError(f"cuts must be increasing and between 1 and {T - 1}")
+    if not 0 <= face_loss <= 1:
+        raise ValueError("face loss must be between 0 and 1")
+    faces = np.asarray(y) > 0
+    remaining = int(np.floor(face_loss * faces.sum() + 1e-9))
+    recovers = np.maximum.accumulate(F_cum[::-1], axis=0)[::-1] >= 0
+    alive = np.ones(n, dtype=bool)
+    stages = []
+    while cuts:
+        best = None
+        best_gain = 0
+        checks = int(alive.sum())
+        for cut in cuts:
+            scores = F_cum[cut - 1]
+            recovered_scores = scores[alive & recovers[cut - 1]]
+            face_scores = np.sort(scores[alive & faces])
+            theta = min(0.0, float(recovered_scores.min(initial=0.0)))
+            if remaining < len(face_scores):
+                theta = min(theta, float(face_scores[remaining]))
+            exits = alive & (scores < theta)
+            gain = int(np.count_nonzero(exits & ~faces)) * (T - cut) - checks
+            if gain > best_gain:
+                best, best_gain = (cut, theta, exits), gain
+        if best is None:
+            break
+        cut, theta, exits = best
+        stages.append({"after": cut, "theta": theta})
+        alive &= ~exits
+        remaining -= int(np.count_nonzero(exits & faces))
+        cuts = [c for c in cuts if c > cut]
+    return stages
+
+
+def apply_cascade(F_cum, stages, alphas, *, rank_exits=True):
     """Returns (score, learners_evaluated) for each image."""
     T, n = F_cum.shape
     offset = 2.0 * float(np.sum(np.abs(alphas))) + 2.0     # |F| < offset / 2 always
@@ -95,10 +154,10 @@ def apply_cascade(F_cum, stages, alphas):
         if st["theta"] is None:
             continue
         out = alive & (F_cum[st["after"] - 1] < st["theta"])
-        score[out] = j * offset + F_cum[st["after"] - 1, out]
+        score[out] = j * offset + F_cum[st["after"] - 1, out] if rank_exits else -offset
         used[out] = st["after"]
         alive &= ~out
-    score[alive] = len(stages) * offset + F_cum[-1, alive]
+    score[alive] = len(stages) * offset + F_cum[-1, alive] if rank_exits else F_cum[-1, alive]
     return score, used
 
 

@@ -22,6 +22,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+import platform
 
 import numpy as np
 
@@ -32,7 +33,7 @@ HEADER = HARNESS / "vj_learner.h"
 SCAN_HEADER = HARNESS / "vj_scan.h"
 MAX_SCAN = 1000         # parameter combinations per scan
 RUNNER_C = HARNESS / "runner.c"
-HARNESS_FILES = ("vj_learner.h", "vj_scan.h", "runner.c")
+HARNESS_FILES = ("vj_learner.h", "vj_scan.h", "vj_image.h", "runner.c")
 
 
 def use_harness(directory):
@@ -109,28 +110,37 @@ def check_source(source):
     return problems
 
 
-def _undefined_symbols(obj):
-    out = subprocess.run(["nm", "-u", str(obj)], capture_output=True, text=True, timeout=COMPILE_TIMEOUT_S)
+def _nm(obj, flag):
+    out = subprocess.run(["nm", flag, str(obj)], capture_output=True, text=True, timeout=COMPILE_TIMEOUT_S)
     if out.returncode != 0:
         raise LearnerError("nm failed: " + _clip(out.stderr))
-    names = set()
-    for line in out.stdout.splitlines():
-        parts = line.split()
-        if not parts:
-            continue
-        name = parts[-1]
-        if sys.platform == "darwin" and name.startswith("_"):
-            name = name[1:]  # Mach-O adds one leading underscore to C names
-        names.add(name)
-    return names
+    return [line.split() for line in out.stdout.splitlines() if line.split()]
+
+
+def _c_name(name):
+    if sys.platform == "darwin" and name.startswith("_"):
+        return name[1:]  # Mach-O adds one leading underscore to C names
+    return name
+
+
+def _undefined_symbols(obj):
+    return {_c_name(parts[-1]) for parts in _nm(obj, "-u")}
+
+
+def _defined_symbols(obj):
+    """Global names the object defines (functions and variables), without the undefined ones."""
+    return {_c_name(parts[-1]) for parts in _nm(obj, "-g") if len(parts) >= 3 and parts[-2] not in "Uw"}
 
 
 def runner_object(cache_dir):
     """Compile runner.c once per cache directory (atomic, safe for parallel workers)."""
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha256(RUNNER_C.read_bytes() + HEADER.read_bytes() + SCAN_HEADER.read_bytes()
-                         + CC.encode()).hexdigest()[:16]
+    image_header = RUNNER_C.with_name("vj_image.h")
+    image_code = image_header.read_bytes() if image_header.exists() else b""
+    compiler = f"{platform.system()}:{platform.machine()}:{CC}"
+    key = hashlib.sha256(RUNNER_C.read_bytes() + HEADER.read_bytes() + SCAN_HEADER.read_bytes() + image_code
+                         + compiler.encode()).hexdigest()[:16]
     obj = cache_dir / f"runner-{key}.o"
     if obj.exists():
         return obj
@@ -158,6 +168,21 @@ def build_template(source, build_dir, cache_dir):
 
 
 def _build(source, build_dir, cache_dir, template):
+    obj, warnings = compile_rule(source, build_dir, HEADER, SCAN_HEADER if template else None)
+    binary = obj.with_name("learner")
+    out = subprocess.run([CC, str(runner_object(cache_dir)), str(obj), "-lm", "-o", str(binary)],
+                         capture_output=True, text=True, timeout=COMPILE_TIMEOUT_S)
+    if out.returncode != 0:
+        raise LearnerError("link error (is weak_score defined exactly once, and no main?):\n" + _clip(out.stderr))
+    return Build(binary, hashlib.sha256(source.encode("utf-8")).hexdigest(), warnings)
+
+
+def compile_rule(source, build_dir, header, scan_header=None, symbol="weak_score", rename=None):
+    """Compile and check an accepted learner, optionally using a unique score symbol.
+
+    With a unique symbol (several rules linked into one detector), any other global name the
+    rule defines, such as a non-static helper function, gets the suffix __<symbol> so two rules
+    with a helper of the same name still link."""
     problems = check_source(source)
     if problems:
         raise LearnerError("source rejected: " + "; ".join(problems))
@@ -166,8 +191,12 @@ def _build(source, build_dir, cache_dir, template):
     src = build_dir / "learner.c"
     src.write_text(source, encoding="utf-8")
     obj = build_dir / "learner.o"
-    binary = build_dir / "learner"
-    includes = ["-include", str(HEADER)] + (["-include", str(SCAN_HEADER)] if template else [])
+    includes = ["-include", str(header)]
+    if symbol != "weak_score":
+        includes += [f"-Dweak_score={symbol}"]
+    includes += [f"-D{name}={name}__{symbol}" for name in sorted(rename or ())]
+    if scan_header is not None:
+        includes += ["-include", str(scan_header)]
     try:
         out = subprocess.run([CC, *CFLAGS, *includes, "-c", str(src), "-o", str(obj)],
                              capture_output=True, text=True, timeout=COMPILE_TIMEOUT_S)
@@ -175,20 +204,20 @@ def _build(source, build_dir, cache_dir, template):
         raise LearnerError(f"compiling took longer than {COMPILE_TIMEOUT_S} s") from None
     if out.returncode != 0:
         msg = out.stderr.replace(str(build_dir) + "/", "")
-        if not template and re.search(r"\bP[0-3]\b", source):
+        if scan_header is None and re.search(r"\bP[0-3]\b", source):
             msg = "P0..P3 exist only in scan templates; submit concrete numbers.\n" + msg
         raise LearnerError("compile error:\n" + _clip(msg))
     warnings = _clip(out.stderr.replace(str(build_dir) + "/", ""))
-    allowed = ALLOWED_UNDEFINED | ({"vj_p"} if template else set())
+    allowed = ALLOWED_UNDEFINED | ({"vj_p"} if scan_header is not None else set())
     bad = sorted(_undefined_symbols(obj) - allowed)
     if bad:
         raise LearnerError("calls functions that are not allowed: " + ", ".join(bad)
                            + ". Only <math.h> functions may be called.")
-    out = subprocess.run([CC, str(runner_object(cache_dir)), str(obj), "-lm", "-o", str(binary)],
-                         capture_output=True, text=True, timeout=COMPILE_TIMEOUT_S)
-    if out.returncode != 0:
-        raise LearnerError("link error (is weak_score defined exactly once, and no main?):\n" + _clip(out.stderr))
-    return Build(binary, hashlib.sha256(source.encode("utf-8")).hexdigest(), warnings)
+    if symbol != "weak_score" and rename is None:
+        extra = _defined_symbols(obj) - {symbol}
+        if extra:
+            return compile_rule(source, build_dir, header, scan_header, symbol, rename=extra)
+    return obj, warnings
 
 
 def expand_ranges(ranges):

@@ -7,7 +7,7 @@ from common.metrics import auc, detection_at_fp
 from coordinator.brief import brief, describe, history_text, preview
 from coordinator.ladder import Ladder, flat_ladder, parse_ladder
 from coordinator.selection import alpha, choose, progress, progress_per_ns, required_error
-from ensemble import apply_cascade, calibrate, default_cuts, mean_ns_per_image, running_scores
+from ensemble import apply_cascade, calibrate, calibrate_trajectories, default_cuts, mean_ns_per_image, running_scores
 from harness.threshold import fit_stump
 
 
@@ -157,6 +157,23 @@ def test_calibrate_with_tiny_budget_rejects_nothing():
     assert all(st["theta"] is None for st in stages)
 
 
+def test_trajectory_calibration_finds_useful_cut_and_preserves_recoveries():
+    y = np.array([-1, -1, -1, -1, -1, 1, 1])
+    F = np.array([
+        [-1, -1, -1, -1, -1, -1, -1],
+        [-2, -2, -2, -2, -1, -2, -1],
+        [-3, -3, -3, -3,  0, -3,  0],
+        [-4, -4, -4, -4, -1, -4,  1],
+    ])
+    stages = calibrate_trajectories(F, y, face_loss=0.5)
+    assert stages == [{"after": 2, "theta": -1.0}]
+    scores, used = apply_cascade(F, stages, np.ones(4), rank_exits=False)
+    np.testing.assert_array_equal(used, [2, 2, 2, 2, 4, 2, 4])
+    assert len(set(scores[used == 2])) == 1
+    assert scores[used == 2].max() < scores[used == 4].min()
+    assert calibrate_trajectories(F, y, face_loss=0) == []
+
+
 # ---------------------------------------------------------------- brief
 
 def test_brief_contains_contract_bar_and_feedback():
@@ -244,3 +261,33 @@ def test_compare_setups_have_agents_only_without_fallback():
     assert {"--fails-per-level", "--augment"} <= set(compare.SHARED)
     solo = [n for n, _, _ in compare.setups("m", ["a", "b"], 1, solo=True) if "-solo-" in n]
     assert solo == ["m-solo-a-r1", "m-solo-b-r1"]
+
+
+# ---------------------------------------------------------------- pooled data split
+
+def test_source_of_reads_the_file_name():
+    from common.data import source_of
+    assert source_of("cmu_0001.pgm") == "cmu" and source_of("validate/face/cmu_0001.pgm") == "cmu"
+    assert source_of("face00001.pgm") == "cbcl" and source_of("non-face/B20_00001.pgm") == "cbcl"
+
+
+def test_split_allocates_by_source_and_keeps_identical_images_together():
+    import make_split
+    assert list(make_split.allocate(472, [2429, 472])) == [395, 77]
+    assert make_split.allocate(10, [1, 1, 1]).sum() == 10
+    pool = {}
+    for cls in ("face", "non-face"):
+        for src, n in (("cbcl", 60), ("cmu", 40)):
+            items = [(f"{'cmu_' if src == 'cmu' else 'x'}{i:03d}.pgm", None, f"{cls}{src}{i}") for i in range(n)]
+            if (cls, src) == ("non-face", "cbcl"):        # eight copies of one image
+                items = [(n_, p, "same" if i < 8 else h) for i, (n_, p, h) in enumerate(items)]
+            pool[cls, src] = items
+    counts = {"test": {"face": 30, "non-face": 30}, "validate": {"face": 10, "non-face": 10}}
+    split = make_split.assign(pool, seed=1, counts=counts)
+    assert split == make_split.assign(pool, seed=1, counts=counts)
+    for cls in ("face", "non-face"):
+        for s, total in (("test", 30), ("validate", 10)):
+            got = {src: sum(1 for (c, so, _), v in split.items() if c == cls and so == src and v == s)
+                   for src in ("cbcl", "cmu")}
+            assert got == {"cbcl": total * 6 // 10, "cmu": total * 4 // 10}
+    assert len({split["non-face", "cbcl", f"x{i:03d}.pgm"] for i in range(8)}) == 1

@@ -32,11 +32,39 @@ eval/tests/run_tests.sh                        # shared C evaluator tests
 .venv/bin/python main.py --run-name mix-01 --rounds 10 \
     --agent andrew=claude:agents/prompts/andrew.md --agent base=haar
 
-# After training: cascade (calibrated on validation faces), scores, shared evaluator.
+# After training: choose early exits from validation trajectories, then score.
 .venv/bin/python cascade.py --run-dir runs/mix-01 --face-loss 0.01
 .venv/bin/python predict.py --run-dir runs/mix-01 --images validate --scores s.txt --key k.txt --cascade
 eval/eval s.txt k.txt --fp-rates 0.01,0.05,0.1
 ```
+
+Use `--rules 16` with both `cascade.py` and `predict.py --cascade` to compare
+equal-length prefixes. Calibration considers every position before the final
+rule and uses one validation face-loss budget across the selected checkpoints.
+During scoring, patches rejected at a checkpoint skip every subsequent rule.
+`compare_cascades.py --help` shows how to freeze several prefixes, evaluate
+full chains and cascades on the same split, and measure native time per patch.
+
+## Data split
+
+The images are MIT CBCL Face Database #1, 19×19 grayscale. Its downloaded test set comes from a
+different source (every file is `cmu_*`): lower contrast and fewer gray levels than the training
+set. Within each class, simple pixel statistics tell the two sources apart (AUC about 0.93 for
+faces, 0.78 for non-faces), so a model trained on one and tested on the other also measures that
+shift. On Yoav's advice we pooled both sets and split them again at random, keeping the original
+counts per class. `make_split.py` draws by class and source, keeps identical images together, and
+writes `split_manifest.tsv` (every image, its split, class and source; seed 20261123).
+
+| Split | Faces (cbcl + cmu) | Non-faces (cbcl + cmu) | Where |
+|---|---:|---:|---|
+| train | 2,065 (1,729 + 336) | 3,866 (626 + 3,240) | `train/` |
+| validate | 364 (305 + 59) | 682 (110 + 572) | `validate/` |
+| test | 472 (395 + 77) | 23,573 (3,812 + 19,761) | outside the repo, locked until final scoring |
+
+Because faces are mostly cbcl and non-faces mostly cmu in every split, "looks like a cmu image"
+is a cue for non-face that a rule could learn. Report test results for all images and for each
+source on its own (`predict.py --source cbcl` / `--source cmu`). Results from before the re-split
+(Nov 2026 and earlier) used the old data and can't be compared with new ones.
 
 ## Comparing prompts
 
@@ -169,7 +197,7 @@ rejects `#include`, `#pragma`, `asm` and `__attribute__`, and any call to a func
 `system` or `malloc` fail). A crash, a hang, or a NaN or infinite score fails the candidate,
 never the run.
 
-Validation images exist only in the coordinator process. The CBCL test set is never loaded.
+Validation images exist only in the coordinator process. The test split is never loaded.
 
 ## Files
 
@@ -190,6 +218,7 @@ Validation images exist only in the coordinator process. The CBCL test set is ne
 | `harness/vj_learner.h`, `harness/vj_scan.h`, `harness/runner.c` | the C contract, scan parameters, and the score/time/scan program |
 | `harness/build.py`, `harness/threshold.py` | source checks, compile, run, time; exact weighted threshold fit |
 | `ensemble.py`, `cascade.py`, `predict.py` | reload a run, slice the cascade, write scores for `eval/` |
+| `make_split.py`, `split_manifest.tsv` | the pooled train/validate/test split and its record |
 | `eval/` | shared evaluator: detection and precision at fixed FP rates (C, tested) |
 
 A run folder holds `audit.jsonl` (every event), `manifest.jsonl` (accepted rules with source hash,
@@ -198,7 +227,7 @@ transcript, submission, tool reports) and `summary.json`.
 
 ## Known limits
 
-- The split is the team's folder split: 5,931 training and 1,046 validation images. Validation
+- The split is the pooled split above: 5,931 training and 1,046 validation images. Validation
   error picks rules and sets alpha, and the cascade is calibrated on it too, so validation numbers
   are optimistic. Only the test set gives real numbers.
 - Agents see aggregate validation errors in their feedback, so many attempts can slowly fit validation.

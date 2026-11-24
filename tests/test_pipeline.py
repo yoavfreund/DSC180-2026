@@ -1,6 +1,8 @@
 """Build checks and the coordinator end to end, with fake agents (no LLM)."""
+import hashlib
 import json
 import os
+import subprocess
 
 import numpy as np
 import pytest
@@ -9,6 +11,7 @@ from config import AgentSpec, Config
 from coordinator.coordinator import Coordinator
 from ensemble import learner_outputs, running_scores
 from harness.build import LearnerError, build_learner, run_scores, time_ns, write_images
+from harness.detector import build_detector, score_detector
 from harness.threshold import fit_stump
 
 RULE = "/* rule: band */ double weak_score(const vj_image *im) { return vj_haar2_tb(im, 2, 5, 15, 3); }"
@@ -34,6 +37,45 @@ def test_c_scores_match_numpy_reference(images_file, tmp_path):
     assert np.allclose(s, ref, atol=1e-9)
     ns = time_ns(b.binary, path, len(imgs), reps=3)
     assert 0 < ns < 1000
+
+
+def test_native_cascade_skips_unreachable_rules(tmp_path):
+    first = "double weak_score(const vj_image *im) { return im->px[0][0]; }"
+    second = "double weak_score(const vj_image *im) { return sqrt(im->px[0][0] - 1.0); }"
+    entries = []
+    for i, source in enumerate((first, second)):
+        path = tmp_path / f"rule-{i}.c"
+        path.write_text(source)
+        entries.append({"source": path.name, "source_sha256": hashlib.sha256(source.encode()).hexdigest(),
+                        "alpha": 1.0, "theta": 0.0, "polarity": 1})
+    images = np.zeros((2, 19, 19), dtype=np.uint8)
+    images[1, 0, 0] = 4
+    batches = tmp_path / "patches.bin"
+    output = tmp_path / "scores.bin"
+    write_images(images, batches)
+    binary = build_detector(tmp_path, entries, [{"after": 1, "theta": 0.0}], tmp_path / "build")
+    scores, used = score_detector(binary, batches, 2, output, cascade=True)
+    np.testing.assert_array_equal(used, [1, 2])
+    np.testing.assert_array_equal(scores, [-6, 2])
+    with pytest.raises(subprocess.CalledProcessError):
+        score_detector(binary, batches, 2, output)
+
+
+def test_native_detector_links_rules_that_share_helper_names(tmp_path):
+    source = ("double scale = %d.0;\ndouble helper(const vj_image *im) { return im->px[0][0] * scale; }\n"
+              "double weak_score(const vj_image *im) { return helper(im); }")
+    entries = []
+    for i in (1, 2):
+        text = source % i
+        (tmp_path / f"rule-{i}.c").write_text(text)
+        entries.append({"source": f"rule-{i}.c", "source_sha256": hashlib.sha256(text.encode()).hexdigest(),
+                        "alpha": 1.0, "theta": 3.0, "polarity": 1})
+    images = np.zeros((1, 19, 19), dtype=np.uint8)
+    images[0, 0, 0] = 2                       # rule 1 scores 2 (below 3), rule 2 scores 4 (above 3)
+    write_images(images, tmp_path / "patches.bin")
+    binary = build_detector(tmp_path, entries, [], tmp_path / "build")
+    scores, _ = score_detector(binary, tmp_path / "patches.bin", 1, tmp_path / "scores.bin")
+    np.testing.assert_array_equal(scores, [0.0])
 
 
 @pytest.mark.parametrize("source, message", [
