@@ -1,4 +1,4 @@
-+ /Users/sohan/code/DSC180-2026/.claude/worktrees/q1-results/.venv/bin/python main.py --run-name haar-baseline --rounds 10 --agent base=haar
++ .venv/bin/python main.py --run-name haar-baseline --rounds 10 --agent base=haar
 5931 training images (agents), 1046 validation images (hidden), 0 audit images (held out); ladder [0.3, 0.33, 0.36, 0.39, 0.42, 0.45, 0.48, 0.49]
 round 0: bar 0.300
     base: val err 0.1205, train err 0.1251, 1.25 ns (10.5 s)
@@ -140,7 +140,7 @@ round 9: bar 0.390
  },
  "ns_total": 15.1877
 }
-+ /Users/sohan/code/DSC180-2026/.claude/worktrees/q1-results/.venv/bin/python cascade.py --run-dir runs/haar-baseline --face-loss 0.01
++ .venv/bin/python cascade.py --run-dir runs/haar-baseline --face-loss 0.01
 10 rules; 364 validation faces, 682 validation non-faces; face-loss budget 0.010 across 1 selected checkpoints
 after rules | theta    | faces kept | non-faces left
           3 |  -0.9966 |     0.9945 |         0.4589
@@ -152,7 +152,7 @@ detection at FP rate 0.1: full chain 0.9451, cascade 0.9451
 rules per image: full chain 10, cascade 7.52 (non-faces 6.21, faces 9.96)
 
 wrote runs/haar-baseline/cascade.json
-+ /Users/sohan/code/DSC180-2026/.claude/worktrees/q1-results/.venv/bin/python predict.py --run-dir runs/haar-baseline --images validate --scores runs/haar-baseline/scores.txt --key runs/haar-baseline/key.txt --cascade
++ .venv/bin/python predict.py --run-dir runs/haar-baseline --images validate --scores runs/haar-baseline/scores.txt --key runs/haar-baseline/key.txt --cascade
 wrote 1046 scores to runs/haar-baseline/scores.txt and labels to runs/haar-baseline/key.txt
 mean rules evaluated per patch: 7.52
 + make -C eval eval
