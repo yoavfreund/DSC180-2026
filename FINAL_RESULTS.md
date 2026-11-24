@@ -1,5 +1,10 @@
 # Final results: CBCL test set
 
+> **Old data split.** These Nov 2 results use the original CBCL train/test download, before the
+> pooled re-split of Nov 24 (`make_split.py`), so they can't be compared with newer numbers. To
+> reproduce them, check out the `archive/harness-validation` tag. Current results:
+> [`results/RESULTS.md`](results/RESULTS.md).
+
 Scored 2026-11-02 on one Mac. Three solutions were entered, each person's run-02.
 Andrew's learner detected the most faces at every false-positive (FP) target, but
 it also did the most work per image. Surya's and Sohan's learners weren't clearly

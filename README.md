@@ -3,8 +3,9 @@
 **Latest results (Nov 24, pooled re-split): [`results/RESULTS.md`](results/RESULTS.md)**: tests, Haar
 baseline, and the 25-round agent comparison.
 
-Branch `andrew-agent-learners` (Andrew's implementation). Built from `coordinating-agents`; the
-shared evaluator `eval/` comes from `harness-validation`.
+Branch `q1-face-detector` (the team's Quarter 1 project; formerly `andrew-agent-learners`). Built
+from `coordinating-agents`; the shared evaluator `eval/` comes from `harness-validation`. Older
+branches are kept as `archive/*` tags.
 
 Every boosting round, several agents run in parallel. Each agent writes one weak rule in C. A
 plain-Python coordinator (no LLM) builds, scores and times every rule, keeps the best one under
@@ -12,6 +13,11 @@ the current error bar, and reweights the images. After training, the chain of ru
 into a cascade.
 
 ## Quick start
+
+You need Python 3.12 or newer (the Docker image uses 3.12; also run on 3.13), a C compiler (`gcc` or `clang`) and `make`, because the rules and
+the evaluator are C. On macOS, `xcode-select --install` provides all three; on Ubuntu,
+`sudo apt install build-essential`. On Windows, use WSL or Docker (below). The training and
+validation images are already in the repo, so no download is needed to run anything below.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -24,7 +30,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 `run.py` only calls the scripts below in order. To run the steps yourself:
 
 ```bash
-.venv/bin/python -m pytest -q tests            # 72 tests, no LLM
+.venv/bin/python -m pytest -q tests            # 77 tests, no LLM
 eval/tests/run_tests.sh                        # shared C evaluator tests
 
 # Baseline with no LLM: brute-force Haar search is the only agent.
@@ -68,6 +74,33 @@ Because faces are mostly cbcl and non-faces mostly cmu in every split, "looks li
 is a cue for non-face that a rule could learn. Report test results for all images and for each
 source on its own (`predict.py --source cbcl` / `--source cmu`). Results from before the re-split
 (Nov 2026 and earlier) used the old data and can't be compared with new ones.
+
+### Getting the data from scratch
+
+1. Download MIT CBCL Face Database #1 from http://cbcl.mit.edu/software-datasets/FaceData2.html.
+   The archive has `train/` and `test/` folders, each with `face/` and `non-face/` subfolders of
+   19×19 PGM images.
+2. Unpack it outside the repo, for example to `~/dsc180-private/raw/`, as `cbcl-train/` (the
+   archive's `train/`) and `test/` (the archive's `test/`).
+3. Rebuild the three splits into empty folders. The same inputs and seed always give the same
+   split, so the new `split_manifest.tsv` should match the committed one exactly:
+
+```bash
+.venv/bin/python make_split.py --cbcl ~/dsc180-private/raw/cbcl-train --cmu ~/dsc180-private/raw/test \
+    --train ~/dsc180-private/pooled/train --validate ~/dsc180-private/pooled/validate \
+    --test ~/dsc180-private/pooled/test --manifest ~/dsc180-private/pooled/split_manifest.tsv
+diff ~/dsc180-private/pooled/split_manifest.tsv split_manifest.tsv   # no output = same split
+```
+
+The `test` split stays outside the repo and is scored once, at the end.
+
+### Why the train and validate images are in git
+
+The course's usual rule is to keep raw data out of version control. We commit `train/` and
+`validate/` anyway: the dataset is public and small (6,977 files of 19×19 pixels, 2.6 MB),
+and having it in the repo lets `run.py test` and `run.py all` run right after cloning, with no
+download step. The test split is deliberately **not** committed, so no rule or setting can be
+tuned on it.
 
 ## Comparing prompts
 
